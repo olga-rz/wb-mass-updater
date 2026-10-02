@@ -48,7 +48,7 @@ ch_tnved = st.sidebar.checkbox("Изменить ТН ВЭД / ТНВЭД", valu
 ch_group = st.sidebar.checkbox("Изменить Группу (объединение)", value=default_val)
 ch_complect = st.sidebar.checkbox("Изменить Комплектацию", value=default_val)
 ch_material = st.sidebar.checkbox("Изменить Материал изделия", value=default_val)
-ch_nazn = st.sidebar.checkbox("Изменить Назначение товара", value=default_val)
+ch_nazn = st.sidebar.checkbox("Изменить Назначение держателя в авто", value=default_val) # ИСПРАВЛЕНО НА СИСТЕМНОЕ WB ИЗ СКРИНШОТА
 ch_gift = st.sidebar.checkbox("Изменить Назначение подарка", value=default_val)
 ch_povod = st.sidebar.checkbox("Изменить Повод", value=default_val)
 ch_item_dims = st.sidebar.checkbox("Изменить Размеры предмета", value=default_val)
@@ -84,7 +84,7 @@ if ch_material:
 
 nazn_val = ""
 if ch_nazn:
-    nazn_val = st.sidebar.text_input("Назначение товара (через запятую)", value="смартфоны и мобильные телефоны, навигаторы, планшеты")
+    nazn_val = st.sidebar.text_input("Назначение держателя в авто (через запятую)", value="смартфоны, для навигатора, для автодержателя")
 
 gift_val = ""
 if ch_gift:
@@ -203,7 +203,7 @@ if articules_input and wb_token:
                         if ch_group: row_data["Группа (Объединение)"] = group_val
                         if ch_complect: row_data["Комплектация"] = complect_val[:40] + "..." if len(complect_val) > 40 else complect_val
                         if ch_material: row_data["Материал изделия"] = material_val
-                        if ch_nazn: row_data["Назначение товара"] = nazn_val
+                        if ch_nazn: row_data["Назначение держателя в авто"] = nazn_val
                         if ch_gift: row_data["Назначение подарка"] = gift_val
                         if ch_povod: row_data["Повод"] = povod_val
                         if ch_item_dims: row_data["Размеры предмета"] = f"В:{item_height_val} x Ш:{item_width_val}"
@@ -238,7 +238,6 @@ if articules_input and wb_token:
                     if ch_desc:
                         card["description"] = new_desc_template.format(print_name=print_name)
                     
-                    # ПРЯМАЯ КОРРЕКЦИЯ DIMENSIONS И WEIGHTBRUTTO ПО ОФИЦИАЛЬНОЙ СХЕМЕ WB V2
                     if "dimensions" not in card or not card["dimensions"]:
                         card["dimensions"] = {"length": 18, "width": 14, "height": 1, "weightBrutto": 0.03}
                         
@@ -248,7 +247,6 @@ if articules_input and wb_token:
                         card["dimensions"]["height"] = int(new_height)
                     
                     if ch_weight:
-                        # Записываем строго числом в килограммах внутрь dimensions
                         card["dimensions"]["weightBrutto"] = float(new_weight_val)
                     
                     if "characteristics" not in card:
@@ -269,11 +267,11 @@ if articules_input and wb_token:
                         set_char_value("ТНВЭД", [str(tnved_val)])
                     if ch_complect: set_char_value("Комплектация", text_to_wb_list(complect_val))
                     if ch_material: set_char_value("Материал изделия", text_to_wb_list(material_val))
-                    if ch_nazn: set_char_value("Назначение товара", text_to_wb_list(nazn_val))
+                    if ch_nazn: set_char_value("Назначение держателя в авто", text_to_wb_list(nazn_val))
                     if ch_gift: set_char_value("Назначение подарка", text_to_wb_list(gift_val))
                     if ch_povod: set_char_value("Повод", text_to_wb_list(povod_val))
                     
-                    # Размеры самого предмета передаем строго как числа
+                    # ПРАВИЛЬНАЯ ЧИСЛОВАЯ ПЕРЕДАЧА РАЗМЕРОВ ПРЕДМЕТА СТРОГО ПО ДОКУМЕНТАЦИИ v2
                     if ch_item_dims:
                         set_char_value("Высота предмета (см)", [int(item_height_val)])
                         set_char_value("Ширина предмета (см)", [int(item_width_val)])
