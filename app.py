@@ -7,7 +7,7 @@ import time
 st.set_page_config(page_title="WB Total Armor Updater", layout="wide", page_icon="🛡️")
 
 st.title("🛡️ Защищённый комбайн карточек Wildberries v2")
-st.caption("Массовое точечное изменение характеристик по галочкам с абсолютной защитой ключевых данных")
+st.caption("Массовое точечное изменение характеристик по галочкам с абсолютной защитой ключевых данных по спецификации WB")
 
 if "fetched_data" not in st.session_state:
     st.session_state.fetched_data = None
@@ -202,7 +202,7 @@ if articules_input and wb_token:
                         if ch_tnved: row_data["Код ТН ВЭД / ТНВЭД"] = tnved_val
                         if ch_group: row_data["Группа (Объединение)"] = group_val
                         if ch_complect: row_data["Комплектация"] = complect_val[:40] + "..." if len(complect_val) > 40 else complect_val
-                        if ch_material: row_data["Material изделия"] = material_val
+                        if ch_material: row_data["Материал изделия"] = material_val
                         if ch_nazn: row_data["Назначение товара"] = nazn_val
                         if ch_gift: row_data["Назначение подарка"] = gift_val
                         if ch_povod: row_data["Повод"] = povod_val
@@ -238,21 +238,18 @@ if articules_input and wb_token:
                     if ch_desc:
                         card["description"] = new_desc_template.format(print_name=print_name)
                     
-                    # ГАРАНТИЯ ЖЕСТКОЙ СВЯЗКИ: Сохраняем или создаем объект габаритов упаковки
+                    # ПРЯМАЯ КОРРЕКЦИЯ DIMENSIONS И WEIGHTBRUTTO ПО ОФИЦИАЛЬНОЙ СХЕМЕ WB V2
                     if "dimensions" not in card or not card["dimensions"]:
-                        card["dimensions"] = {"length": 18, "width": 14, "height": 1}
+                        card["dimensions"] = {"length": 18, "width": 14, "height": 1, "weightBrutto": 0.03}
                         
                     if ch_dims:
                         card["dimensions"]["length"] = int(new_length)
                         card["dimensions"]["width"] = int(new_width)
                         card["dimensions"]["height"] = int(new_height)
                     
-                    # ПРЯМАЯ ЕДИНАЯ ЗАПИСЬ: Вес пишется в корень схемы Wildberries v2
                     if ch_weight:
-                        card["weight"] = float(new_weight_val)
-                    elif "weight" not in card:
-                        # Защитная заглушка для логистического блока, если параметр отсутствовал
-                        card["weight"] = 0.03
+                        # Записываем строго числом в килограммах внутрь dimensions
+                        card["dimensions"]["weightBrutto"] = float(new_weight_val)
                     
                     if "characteristics" not in card:
                         card["characteristics"] = []
@@ -267,7 +264,6 @@ if articules_input and wb_token:
                         else:
                             characteristics.append({"name": char_name_str, "value": char_value_list})
                     
-                    # Точечное безопасное изменение текстовых полей и массивов
                     if ch_tnved:
                         set_char_value("Код ТН ВЭД", [str(tnved_val)])
                         set_char_value("ТНВЭД", [str(tnved_val)])
@@ -277,7 +273,7 @@ if articules_input and wb_token:
                     if ch_gift: set_char_value("Назначение подарка", text_to_wb_list(gift_val))
                     if ch_povod: set_char_value("Повод", text_to_wb_list(povod_val))
                     
-                    # Размеры предмета передаем числами строго по новой схеме
+                    # Размеры самого предмета передаем строго как числа
                     if ch_item_dims:
                         set_char_value("Высота предмета (см)", [int(item_height_val)])
                         set_char_value("Ширина предмета (см)", [int(item_width_val)])
