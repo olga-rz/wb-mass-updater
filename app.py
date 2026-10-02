@@ -18,7 +18,7 @@ st.sidebar.header("🔑 Настройки подключения")
 wb_token = st.sidebar.text_input("API Токен (категория Контент)", type="password", help="Вставьте ваш токен контента Wildberries")
 
 st.sidebar.header("📐 Габариты упаковки (см)")
-new_length = st.sidebar.number_input("Длина упаковки", min_value=1, value=11)
+new_length = st.sidebar.number_input("Длина упаковки", min_value=1, value=15) # Поставили 15 как на вашем скриншоте
 new_width = st.sidebar.number_input("Ширина упаковки", min_value=1, value=11)
 new_height = st.sidebar.number_input("Высота упаковки", min_value=1, value=1)
 
@@ -29,32 +29,30 @@ PACK_TRIGGERS = {
     "глубина упаковки": str(new_length)
 }
 
-# Ввод артикулов списком прямо в интерфейсе
 st.sidebar.header("🔢 Ввод артикулов")
-articules_input = st.sidebar.text_area("Вставьте список nmID (каждый артикул с новой строки)", height=150, placeholder="916295595\n12345678")
+articules_input = st.sidebar.text_area("Вставьте список nmID (каждый артикул с новой строки)", height=150, placeholder="916295595")
 
-# Точечный поиск поштучно через textSearch
-def fetch_single_card_by_id(nm_id, token):
+# ВОЗВРАЩАЕМ СТАНДАРТНЫЙ ФИЛЬТР NMIDS, КОТОРЫЙ РАБОТАЛ В COLAB
+def fetch_cards_by_ids_pure(id_chunk, token):
     headers = {"Authorization": token, "Content-Type": "application/json", "Accept": "application/json"}
     url = "https://wildberries.ru"
     payload = {
         "settings": {
-            "cursor": {"limit": 10},
+            "cursor": {"limit": 100},
             "filter": {
                 "withPhoto": -1,
                 "hideTrash": False,
-                "textSearch": str(nm_id)
+                "nmIDs": [int(x) for x in id_chunk] # Строгий поиск по точным ID
             }
         }
     }
     try:
         res = requests.post(url, headers=headers, json=payload, timeout=20)
         if res.status_code == 200:
-            cards = res.json().get("cards", [])
-            return [c for c in cards if int(c.get("nmID", 0)) == int(nm_id)]
+            return res.json().get("cards", [])
         elif res.status_code == 429:
             time.sleep(15)
-            return fetch_single_card_by_id(nm_id, token)
+            return fetch_cards_by_ids_pure(id_chunk, token)
     except:
         pass
     return []
@@ -106,12 +104,9 @@ if articules_input and wb_token:
         
         # КНОПКА ШАГ 1
         if st.button("🔍 Шаг 1: Проверить карточки и сопоставить описания", type="primary"):
-            with st.spinner("Синхронизация данных с серверами Wildberries через поиск..."):
-                all_fetched_cards = []
-                for current_id in target_nm_ids:
-                    single_card_list = fetch_single_card_by_id(current_id, wb_token)
-                    all_fetched_cards.extend(single_card_list)
-                    time.sleep(0.2)
+            with st.spinner("Синхронизация данных с серверами Wildberries..."):
+                # Прямой запрос пачки по ID (как в Colab)
+                all_fetched_cards = fetch_cards_by_ids_pure(target_nm_ids, wb_token)
                 
                 if all_fetched_cards:
                     st.session_state.fetched_data = all_fetched_cards
@@ -135,7 +130,7 @@ if articules_input and wb_token:
                             "Артикул nmID": nm_id,
                             "Артикул продавца": vendor_code,
                             "Текущее Название (БЕЗОПАСНО)": title,
-                            "Текущий... Бренд (БЕЗОПАСНО)": brand,
+                            "Текущий Бренд (БЕЗОПАСНО)": brand,
                             "Вытащенный принт": print_name,
                             "Новое описание для отправки": final_desc_preview[:120] + "...",
                             "Размеры упаковки": f"{new_length}x{new_width}x{new_height}"
