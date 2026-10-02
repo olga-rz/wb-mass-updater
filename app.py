@@ -73,8 +73,8 @@ def send_update_batch(cards_payload, token):
         return False, f"Ошибка сети: {e}"
 if uploaded_file and wb_token:
     try:
-        # Читаем Excel, принудительно заставляя Pandas видеть nmID как текст, а не как дробь
-        df_excel = pd.read_excel(uploaded_file, dtype=str)
+        # Читаем Excel напрямую
+        df_excel = pd.read_excel(uploaded_file)
         df_excel.columns = [str(c).strip().lower() for c in df_excel.columns]
         
         nm_col = next((c for c in df_excel.columns if 'nmid' in c or 'артикул' in c), None)
@@ -85,18 +85,17 @@ if uploaded_file and wb_token:
         else:
             df_excel = df_excel.dropna(subset=[nm_col, desc_col])
             
-            # Очищаем артикулы от возможных точек (например, 916295595.0 -> 916295595)
             cleaned_nm_ids = []
             cleaned_descriptions = []
             
             for index, row in df_excel.iterrows():
-                raw_nm = str(row[nm_col]).strip()
-                if '.' in raw_nm:
-                    raw_nm = raw_nm.split('.')[0]
-                
-                if raw_nm.isdigit():
-                    cleaned_nm_ids.append(int(raw_nm))
+                try:
+                    # Принудительное математическое округление до целого числа (убирает .0)
+                    raw_nm = int(float(str(row[nm_col]).strip()))
+                    cleaned_nm_ids.append(raw_nm)
                     cleaned_descriptions.append(str(row[desc_col]))
+                except:
+                    continue
             
             if not cleaned_nm_ids:
                 st.error("❌ В колонке nmID не найдено корректных цифровых артикулов.")
