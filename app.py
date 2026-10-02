@@ -48,7 +48,7 @@ ch_tnved = st.sidebar.checkbox("Изменить ТН ВЭД / ТНВЭД", valu
 ch_group = st.sidebar.checkbox("Изменить Группу (объединение)", value=default_val)
 ch_complect = st.sidebar.checkbox("Изменить Комплектацию", value=default_val)
 ch_material = st.sidebar.checkbox("Изменить Материал изделия", value=default_val)
-ch_nazn = st.sidebar.checkbox("Изменить Назначение (Оба поля)", value=default_val)
+ch_nazn = st.sidebar.checkbox("Изменить Назначение держателя в авто", value=default_val)
 ch_gift = st.sidebar.checkbox("Изменить Назначение подарка", value=default_val)
 ch_povod = st.sidebar.checkbox("Изменить Повод", value=default_val)
 ch_item_dims = st.sidebar.checkbox("Изменить Размеры предмета", value=default_val)
@@ -264,35 +264,28 @@ if articules_input and wb_token:
                         else:
                             characteristics.append({"name": char_name_str, "value": char_value_list})
                     
-                    # ПРИМЕНЯЕМ СТРАТЕГИЮ ДВОЙНОГО-ТРОЙНОГО ЗАПОЛНЕНИЯ ПО СТОЛБЦАМ EXCEL И КАБИНЕТА
                     if ch_tnved:
                         set_char_value("Код ТН ВЭД", [str(tnved_val)])
                         set_char_value("ТНВЭД", [str(tnved_val)])
                     if ch_complect: set_char_value("Комплектация", text_to_wb_list(complect_val))
                     if ch_material: set_char_value("Материал изделия", text_to_wb_list(material_val))
-                    
                     if ch_nazn:
-                        # ТРОЙНОЙ УДАР ПО НАЗНАЧЕНИЮ: Заполняем оба варианта из Excel
                         set_char_value("Назначение держателя в авто", text_to_wb_list(nazn_val))
                         set_char_value("Назначение товара", text_to_wb_list(nazn_val))
-                        
                     if ch_gift: set_char_value("Назначение подарка", text_to_wb_list(gift_val))
                     if ch_povod: set_char_value("Повод", text_to_wb_list(povod_val))
                     
+                    # ИСПРАВЛЕНО: Передаем размеры самого товара строго как строки в списке ["6"], а не чистые числа!
                     if ch_item_dims:
-                        # ТРОЙНОЙ УДАР ПО РАЗМЕРАМ ТОВАРА: Числами во все возможные типы написания колонок Excel
-                        set_char_value("Высота предмета (см)", [int(item_height_val)])
-                        set_char_value("Ширина предмета (см)", [int(item_width_val)])
-                        set_char_value("Высота предмета", [int(item_height_val)])
-                        set_char_value("Ширина предмета", [int(item_width_val)])
-                        set_char_value("Высота предмета (мм)", [int(item_height_val * 10)])
-                        set_char_value("Ширина предмета (мм)", [int(item_width_val * 10)])
+                        set_char_value("Высота предмета (см)", [str(int(item_height_val))])
+                        set_char_value("Ширина предмета (см)", [str(int(item_width_val))])
+                        set_char_value("Высота предмета", [str(int(item_height_val))])
+                        set_char_value("Ширина предмета", [str(int(item_width_val))])
                         
                     if ch_model: set_char_value("Модель", [str(model_val)])
                     if ch_fragile: set_char_value("Хрупкость", [str(fragile_val)])
                     
                     if ch_kreplenie:
-                        # УДАР ПО КРЕПЛЕНИЮ: Заполняем и Способ и Тип крепления одновременно
                         set_char_value("Способ крепления", text_to_wb_list(kreplenie_val))
                         set_char_value("Тип крепления", text_to_wb_list(kreplenie_val))
                     
