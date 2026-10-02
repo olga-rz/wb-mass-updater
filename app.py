@@ -42,10 +42,16 @@ def chunk_list(lst, n):
 def fetch_cards_by_ids(id_chunk, token):
     headers = {"Authorization": token, "Content-Type": "application/json", "Accept": "application/json"}
     url = "https://wildberries.ru"
+    
+    # ИСПРАВЛЕНО: Добавлен hideTrash: False, чтобы WB выдавал товары, которых нет в наличии
     payload = {
         "settings": {
             "cursor": {"limit": 100},
-            "filter": {"withPhoto": -1, "nmIDs": [int(x) for x in id_chunk]}
+            "filter": {
+                "withPhoto": -1,
+                "hideTrash": False,
+                "nmIDs": [int(x) for x in id_chunk]
+            }
         }
     }
     try:
