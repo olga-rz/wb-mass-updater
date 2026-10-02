@@ -14,6 +14,7 @@ if "fetched_data" not in st.session_state:
 if "df_preview" not in st.session_state:
     st.session_state.df_preview = None
 
+# Инициализация состояний для кнопок «Выделить всё / Сбросить всё»
 if "checkbox_state" not in st.session_state:
     st.session_state.checkbox_state = False
 
@@ -106,62 +107,41 @@ def get_real_urls():
     part_c = b'api.wildberries.ru/content/v2/cards/update'
     return (part_a + part_b).decode('utf-8'), (part_a + part_c).decode('utf-8')
 
-# УМНАЯ СЛУЖБА МАССОВОЙ ВЫГРУЗКИ КАРТОЧЕК С ЦИКЛОМ ПАГИНАЦИИ ДО КРУГЛОГО КОНЦА БАЗЫ
+# МГНОВЕННАЯ ПАКЕТНАЯ ВЫГРУЗКА: Нарезает список nmIDs по 100 штук и запрашивает их точечно
 def fetch_cards_by_ids_pure(id_chunk, token):
     headers = {"Authorization": token, "Content-Type": "application/json", "Accept": "application/json"}
     url_list, _ = get_real_urls()
     all_found_cards = []
     
-    # Системные указатели для бесконечной прокрутки базы WB v2
-    has_more = True
-    nm_cursor = {
-        "limit": 100
-    }
+    # Разбиваем список пользователя на пачки по 100 nmID
+    sub_chunks = [id_chunk[i:i + 100] for i in range(0, len(id_chunk), 100)]
     
-    while has_more:
+    for chunk in sub_chunks:
         payload = {
             "settings": {
-                "cursor": nm_cursor,
-                "filter": {"withPhoto": -1, "hideTrash": False}
+                "cursor": {"limit": 100},
+                "filter": {"withPhoto": -1, "hideTrash": False, "nmIDs": [int(x) for x in chunk]}
             }
         }
         try:
             res = requests.post(url_list, headers=headers, json=payload, timeout=20)
             if res.status_code == 200:
-                data_json = res.json()
-                cards = data_json.get("cards", [])
-                
-                # Фильтруем пачку на лету: забираем только те, nmID которых есть в списке пользователя
-                for c in cards:
-                    if int(c.get("nmID", 0)) in id_chunk:
-                        all_found_cards.append(c)
-                        
-                # Проверяем, есть ли следующая страница по меткам cursor
-                res_cursor = data_json.get("cursor", {})
-                updated_nm_id = res_cursor.get("nmID", 0)
-                updated_updated_at = res_cursor.get("updatedAt", "")
-                total_returned = res_cursor.get("total", 0)
-                
-                if total_returned < 100 or updated_nm_id == 0:
-                    has_more = False
-                else:
-                    nm_cursor["nmID"] = updated_nm_id
-                    nm_cursor["updatedAt"] = updated_updated_at
-                    time.sleep(0.4) # Безопасная пауза перед пролистыванием страницы
+                cards = res.json().get("cards", [])
+                all_found_cards.extend(cards)
+                time.sleep(0.4) # Безопасная пауза между пачками
             elif res.status_code == 429:
                 time.sleep(15)
-                continue
-            else:
-                has_more = False
+                # Повторяем эту же пачку при лимите запросов
+                sub_chunks.insert(0, chunk)
         except Exception as e:
-            has_more = False
+            pass
             
-    # Убираем дубли, если они проскочили
+    # Удаление дубликатов на всякий случай
     seen_ids = set()
     final_clean_cards = []
     for card in all_found_cards:
-        c_id = int(card.get("nmID"))
-        if c_id not in seen_ids:
+        c_id = int(card.get("nmID", 0))
+        if c_id and c_id not in seen_ids:
             seen_ids.add(c_id)
             final_clean_cards.append(card)
             
@@ -197,7 +177,7 @@ if articules_input and wb_token:
         st.success(f"✅ Введено уникальных артикулов для обработки: {len(target_nm_ids)}")
         
         if st.button("🔍 Шаг 1: Проверить карточки и сопоставить характеристики", type="primary"):
-            with st.spinner("Синхронизация данных с серверами Wildberries (пролистывание страниц)..."):
+            with st.spinner("Синхронизация данных с серверами Wildberries (мгновенный точечный поиск)..."):
                 all_fetched_cards = fetch_cards_by_ids_pure(target_nm_ids, wb_token)
                 
                 if all_fetched_cards:
@@ -291,17 +271,14 @@ if articules_input and wb_token:
                         else:
                             characteristics.append({"name": char_name_str, "value": char_value_list})
                     
-                    # ПРАВИЛЬНОЕ РАСПРЕДЕЛЕНИЕ ТН ВЭД И КОМПЛЕКТАЦИИ ПО СТАНДАРТАМ КАТЕГОРИИ v2
                     if ch_tnved:
-                        # ТН ВЭД передаем СТРОГО списком строк ["код"]
                         set_char_value("Код ТН ВЭД", [str(tnved_val)])
-                        
                     if ch_complect: 
-                        # Комплектацию делим строго через точку с запятой ';' из Excel шаблона дистрибьютора
                         set_char_value("Комплектация", text_to_wb_list_by_sep(complect_val, separator=";"))
-                        
                     if ch_material: set_char_value("Материал изделия", text_to_wb_list_by_sep(material_val, separator=","))
-                    if ch_nazn: set_char_value("Назначение держателя в авто", text_to_wb_list_by_sep(nazn_val, separator=","))
+                    if ch_nazn: 
+                        set_char_value("Назначение держателя в авто", text_to_wb_list_by_sep(nazn_val, separator=","))
+                        set_char_value("Назначение товара", text_to_wb_list_by_sep(nazn_val, separator=","))
                     if ch_gift: set_char_value("Назначение подарка", text_to_wb_list_by_sep(gift_val, separator=","))
                     if ch_povod: set_char_value("Повод", text_to_wb_list_by_sep(povod_val, separator=","))
                     if ch_model: set_char_value("Модель", [str(model_val)])
