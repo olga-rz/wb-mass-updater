@@ -15,7 +15,7 @@ if "df_preview" not in st.session_state:
     st.session_state.df_preview = None
 
 # ==============================================================================
-# БОКОВАЯ ПАНЕЛЬ: СИСТЕМА УПРАВЛЕНИЯ ГАЛОЧКАМИ (12 РАЗДЕЛОВ)
+# БОКОВАЯ ПАНЕЛЬ: СИСТЕМА УПРАВЛЕНИЯ ГАЛОЧКАМИ
 # ==============================================================================
 st.sidebar.header("🔑 Доступ")
 wb_token = st.sidebar.text_input("API Токен (Контент)", type="password")
@@ -31,7 +31,7 @@ ch_tnved = st.sidebar.checkbox("Изменить ТН ВЭД / ТНВЭД", valu
 ch_group = st.sidebar.checkbox("Изменить Группу (объединение)", value=False)
 ch_complect = st.sidebar.checkbox("Изменить Комплектацию", value=False)
 ch_material = st.sidebar.checkbox("Изменить Материал изделия", value=False)
-ch_nazn = st.sidebar.checkbox("Изменить Назначение держателя в авто", value=False)
+ch_nazn = st.sidebar.checkbox("Изменить Назначение товара", value=False) # ИСПРАВЛЕНО НАЗВАНИЕ ПО СФЕРЕ WB
 ch_gift = st.sidebar.checkbox("Изменить Назначение подарка", value=False)
 ch_povod = st.sidebar.checkbox("Изменить Повод", value=False)
 ch_item_dims = st.sidebar.checkbox("Изменить Размеры предмета", value=False)
@@ -40,83 +40,11 @@ ch_fragile = st.sidebar.checkbox("Изменить Хрупкость", value=Fa
 
 st.sidebar.header("📝 Новые значения:")
 
-# Логика динамического отображения полей ввода
 new_length, new_width, new_height = 18, 14, 1
 if ch_dims:
     new_length = st.sidebar.number_input("Длина упаковки (см)", min_value=1, value=18)
     new_width = st.sidebar.number_input("Ширина упаковки (см)", min_value=1, value=14)
     new_height = st.sidebar.number_input("Высота упаковки (см)", min_value=1, value=1)
-new_weight_val = "0.03"
-if ch_weight:
-    new_weight_val = st.sidebar.text_input("Вес упаковки (кг, через точку)", value="0.03")
-
-tnved_val = ""
-if ch_tnved:
-    tnved_val = st.sidebar.text_input("Код ТН ВЭД / ТНВЭД (10 цифр)", value="3926909709")
-
-group_val = ""
-if ch_group:
-    group_val = st.sidebar.text_input("Группа (для объединения карточек)", value="1")
-
-complect_val = ""
-if ch_complect:
-    complect_val = st.sidebar.text_area("Комплектация (через запятую)", value="Металлическая пластина - 1 шт, Двухсторонний скотч - 1 шт")
-
-material_val = ""
-if ch_material:
-    material_val = st.sidebar.text_input("Материал изделия (через запятую)", value="металл")
-
-nazn_val = ""
-if ch_nazn:
-    nazn_val = st.sidebar.text_input("Назначение держателя в авто", value="смартфоны, для навигатора")
-
-gift_val = ""
-if ch_gift:
-    gift_val = st.sidebar.text_input("Назначение подарка (через запятую)", value="любимому, любимой, другу, подруге")
-
-povod_val = ""
-if ch_povod:
-    povod_val = st.sidebar.text_input("Повод (через запятую)", value="новый год, день рождения, 23 февраля")
-
-item_height_val, item_width_val = 6, 4
-if ch_item_dims:
-    item_height_val = st.sidebar.number_input("Высота предмета (см)", min_value=1, value=6)
-    item_width_val = st.sidebar.number_input("Ширина предмета (см)", min_value=1, value=4)
-
-model_val = ""
-if ch_model:
-    model_val = st.sidebar.text_input("Модель", value="металлическая пластина на телефон")
-
-fragile_val = ""
-if ch_fragile:
-    fragile_val = st.sidebar.text_input("Хрупкость", value="не хрупкое")
-
-def get_real_urls():
-    part_a = b'https://content-'
-    part_b = b'api.wildberries.ru/content/v2/get/cards/list'
-    part_c = b'api.wildberries.ru/content/v2/cards/update'
-    return (part_a + part_b).decode('utf-8'), (part_a + part_c).decode('utf-8')
-
-def fetch_cards_by_ids_pure(id_chunk, token):
-    headers = {"Authorization": token, "Content-Type": "application/json", "Accept": "application/json"}
-    url_list, _ = get_real_urls()
-    payload = {
-        "settings": {
-            "cursor": {"limit": 100},
-            "filter": {"withPhoto": -1, "hideTrash": False, "nmIDs": [int(x) for x in id_chunk]}
-        }
-    }
-    try:
-        res = requests.post(url_list, headers=headers, json=payload, timeout=20)
-        if res.status_code == 200:
-            cards = res.json().get("cards", [])
-            return [c for c in cards if int(c.get("nmID", 0)) in id_chunk]
-        elif res.status_code == 429:
-            time.sleep(15)
-            return fetch_cards_by_ids_pure(id_chunk, token)
-    except:
-        pass
-    return []
 def send_update_batch(cards_payload, token):
     headers = {"Authorization": token, "Content-Type": "application/json", "Accept": "application/json"}
     _, url_update = get_real_urls()
@@ -182,12 +110,12 @@ if articules_input and wb_token:
                         
                         if ch_desc: row_data["Новое Описание"] = "Будет обновлено"
                         if ch_dims: row_data["Размеры упаковки"] = f"{new_length}x{new_width}x{new_height}"
-                        if ch_weight: row_data["Вес упаковки (кг)"] = new_weight_val
+                        if ch_weight: row_data["Вес упаковки (кг)"] = f"{new_weight_val:.3f}"
                         if ch_tnved: row_data["Код ТН ВЭД / ТНВЭД"] = tnved_val
                         if ch_group: row_data["Группа (Объединение)"] = group_val
                         if ch_complect: row_data["Комплектация"] = complect_val[:40] + "..." if len(complect_val) > 40 else complect_val
                         if ch_material: row_data["Материал изделия"] = material_val
-                        if ch_nazn: row_data["Назначение держателя"] = nazn_val
+                        if ch_nazn: row_data["Назначение товара"] = nazn_val
                         if ch_gift: row_data["Назначение подарка"] = gift_val
                         if ch_povod: row_data["Повод"] = povod_val
                         if ch_item_dims: row_data["Размеры предмета"] = f"В:{item_height_val} x Ш:{item_width_val}"
@@ -242,24 +170,37 @@ if articules_input and wb_token:
                         else:
                             characteristics.append({"name": char_name_str, "value": char_value_list})
                     
-                    if ch_weight: set_char_value("Вес с упаковкой (кг)", [str(new_weight_val)])
+                    # ПРЯМАЯ ПЕРЕДАЧА ЧИСЕЛ БЕЗ ТЕКСТОВЫХ КАВЫЧЕК ДЛЯ ВЕСА И РАЗМЕРОВ ТОВАРА
+                    if ch_weight:
+                        # Вес передаем как число с плавающей точкой
+                        set_char_value("Вес с упаковкой (кг)", [float(new_weight_val)])
+                        set_char_value("Вес с упаковкой (кг)", [float(new_weight_val)])
+                        try:
+                            # Перевод в граммы как целое число (если требует старая схема WB)
+                            grams_val = int(float(new_weight_val) * 1000)
+                            set_char_value("Вес товара с упаковкой (г)", [grams_val])
+                        except:
+                            pass
+                            
                     if ch_tnved:
                         set_char_value("Код ТН ВЭД", [str(tnved_val)])
                         set_char_value("ТНВЭД", [str(tnved_val)])
                     if ch_complect: set_char_value("Комплектация", text_to_wb_list(complect_val))
                     if ch_material: set_char_value("Материал изделия", text_to_wb_list(material_val))
-                    if ch_nazn: set_char_value("Назначение держателя в авто", text_to_wb_list(nazn_val))
+                    if ch_nazn: set_char_value("Назначение товара", text_to_wb_list(nazn_val))
                     if ch_gift: set_char_value("Назначение подарка", text_to_wb_list(gift_val))
                     if ch_povod: set_char_value("Повод", text_to_wb_list(povod_val))
+                    
+                    # Размеры предмета передаем строго как числа
                     if ch_item_dims:
-                        set_char_value("Высота предмета (см)", [str(item_height_val)])
-                        set_char_value("Ширина предмета (см)", [str(item_width_val)])
+                        set_char_value("Высота предмета (см)", [int(item_height_val)])
+                        set_char_value("Ширина предмета (см)", [int(item_width_val)])
+                        
                     if ch_model: set_char_value("Модель", [str(model_val)])
                     if ch_fragile: set_char_value("Хрупкость", [str(fragile_val)])
                     
-                    # Прямая поддержка обновления поля Группа (объединение) на верхнем уровне схемы
                     if ch_group:
-                        card["targetUrl"] = str(group_val) # Поле Группа в API v2 передается через привязку targetUrl
+                        card["targetUrl"] = str(group_val)
                     
                     update_payload_batch.append(card)
                     
