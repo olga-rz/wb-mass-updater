@@ -64,7 +64,6 @@ if ch_dims:
     new_height = st.sidebar.number_input("Высота упаковки (см)", min_value=1, value=1)
 new_weight_val = 0.030
 if ch_weight:
-    # ИСПРАВЛЕНО: Убрана запутывающая подсказка про точку, поле принимает любой ввод
     new_weight_val = st.sidebar.number_input("Вес упаковки (кг)", min_value=0.001, value=0.030, step=0.001, format="%.3f")
 
 tnved_val = ""
@@ -203,7 +202,7 @@ if articules_input and wb_token:
                         if ch_tnved: row_data["Код ТН ВЭД / ТНВЭД"] = tnved_val
                         if ch_group: row_data["Группа (Объединение)"] = group_val
                         if ch_complect: row_data["Комплектация"] = complect_val[:40] + "..." if len(complect_val) > 40 else complect_val
-                        if ch_material: row_data["Материал изделия"] = material_val
+                        if ch_material: row_data["Material изделия"] = material_val
                         if ch_nazn: row_data["Назначение товара"] = nazn_val
                         if ch_gift: row_data["Назначение подарка"] = gift_val
                         if ch_povod: row_data["Повод"] = povod_val
@@ -216,7 +215,7 @@ if articules_input and wb_token:
                     st.session_state.df_preview = pd.DataFrame(preview_rows)
                 else:
                     st.warning("⚠️ Не найдено карточек. Проверьте правильность токена контента или введённых nmID.")
-                if st.session_state.df_preview is not None:
+        if st.session_state.df_preview is not None:
             st.subheader("👀 Таблица предварительного контроля данных")
             st.markdown("Внимательно проверьте параметры карточки. Всё, что не отмечено галочками, останется БЕЗ изменений. Артикулы, Название, Баркоды, Артикул продавца и Бренд полностью защищены от удаления.")
             st.dataframe(st.session_state.df_preview, use_container_width=True)
@@ -239,7 +238,7 @@ if articules_input and wb_token:
                     if ch_desc:
                         card["description"] = new_desc_template.format(print_name=print_name)
                     
-                    # Сохраняем или обновляем логистический блок габаритов
+                    # ГАРАНТИЯ ЖЕСТКОЙ СВЯЗКИ: Сохраняем или создаем объект габаритов упаковки
                     if "dimensions" not in card or not card["dimensions"]:
                         card["dimensions"] = {"length": 18, "width": 14, "height": 1}
                         
@@ -248,11 +247,11 @@ if articules_input and wb_token:
                         card["dimensions"]["width"] = int(new_width)
                         card["dimensions"]["height"] = int(new_height)
                     
-                    # ЖЕСТКАЯ СИНХРОНИЗАЦИЯ: Вес пишется строго на верхний уровень схемы v2
+                    # ПРЯМАЯ ЕДИНАЯ ЗАПИСЬ: Вес пишется в корень схемы Wildberries v2
                     if ch_weight:
                         card["weight"] = float(new_weight_val)
                     elif "weight" not in card:
-                        # Если вес не меняется, но его нет в структуре, ставим заглушку, чтобы не ругался шлюз тарифов
+                        # Защитная заглушка для логистического блока, если параметр отсутствовал
                         card["weight"] = 0.03
                     
                     if "characteristics" not in card:
@@ -268,7 +267,7 @@ if articules_input and wb_token:
                         else:
                             characteristics.append({"name": char_name_str, "value": char_value_list})
                     
-                    # Точечно модифицируем текстовые и списочные характеристики по галочкам
+                    # Точечное безопасное изменение текстовых полей и массивов
                     if ch_tnved:
                         set_char_value("Код ТН ВЭД", [str(tnved_val)])
                         set_char_value("ТНВЭД", [str(tnved_val)])
@@ -278,6 +277,7 @@ if articules_input and wb_token:
                     if ch_gift: set_char_value("Назначение подарка", text_to_wb_list(gift_val))
                     if ch_povod: set_char_value("Повод", text_to_wb_list(povod_val))
                     
+                    # Размеры предмета передаем числами строго по новой схеме
                     if ch_item_dims:
                         set_char_value("Высота предмета (см)", [int(item_height_val)])
                         set_char_value("Ширина предмета (см)", [int(item_width_val)])
