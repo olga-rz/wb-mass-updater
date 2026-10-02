@@ -42,8 +42,6 @@ def chunk_list(lst, n):
 def fetch_cards_by_ids(id_chunk, token):
     headers = {"Authorization": token, "Content-Type": "application/json", "Accept": "application/json"}
     url = "https://wildberries.ru"
-    
-    # ИСПРАВЛЕНО: Добавлен hideTrash: False, чтобы WB выдавал товары, которых нет в наличии
     payload = {
         "settings": {
             "cursor": {"limit": 100},
@@ -75,7 +73,8 @@ def send_update_batch(cards_payload, token):
         return False, f"Ошибка сети: {e}"
 if uploaded_file and wb_token:
     try:
-        df_excel = pd.read_excel(uploaded_file)
+        # Читаем Excel, принудительно заставляя Pandas видеть nmID как текст, а не как дробь
+        df_excel = pd.read_excel(uploaded_file, dtype=str)
         df_excel.columns = [str(c).strip().lower() for c in df_excel.columns]
         
         nm_col = next((c for c in df_excel.columns if 'nmid' in c or 'артикул' in c), None)
@@ -85,123 +84,138 @@ if uploaded_file and wb_token:
             st.error("❌ Ошибка структуры Excel: В таблице обязательно должны быть колонки 'nmID' и 'Описание'.")
         else:
             df_excel = df_excel.dropna(subset=[nm_col, desc_col])
-            df_excel[nm_col] = pd.to_numeric(df_excel[nm_col], errors='coerce').dropna().astype(int)
             
-            excel_mapping = dict(zip(df_excel[nm_col], df_excel[desc_col]))
-            st.session_state.excel_mapping = excel_mapping
-            target_nm_ids = list(excel_mapping.keys())
+            # Очищаем артикулы от возможных точек (например, 916295595.0 -> 916295595)
+            cleaned_nm_ids = []
+            cleaned_descriptions = []
             
-            st.success(f"✅ Из Excel успешно загружено уникальных описаний для артикулов: {len(target_nm_ids)}")
+            for index, row in df_excel.iterrows():
+                raw_nm = str(row[nm_col]).strip()
+                if '.' in raw_nm:
+                    raw_nm = raw_nm.split('.')[0]
+                
+                if raw_nm.isdigit():
+                    cleaned_nm_ids.append(int(raw_nm))
+                    cleaned_descriptions.append(str(row[desc_col]))
             
-            if st.button("🔍 Шаг 1: Проверить карточки и сопоставить описания из Excel", type="primary"):
-                with st.spinner("Синхронизация данных с серверами Wildberries..."):
-                    all_fetched_cards = []
-                    chunks = list(chunk_list(target_nm_ids, 100))
-                    for chunk in chunks:
-                        cards = fetch_cards_by_ids(chunk, wb_token)
-                        all_fetched_cards.extend(cards)
-                    
-                    if all_fetched_cards:
-                        st.session_state.fetched_data = all_fetched_cards
-                        preview_rows = []
+            if not cleaned_nm_ids:
+                st.error("❌ В колонке nmID не найдено корректных цифровых артикулов.")
+            else:
+                excel_mapping = dict(zip(cleaned_nm_ids, cleaned_descriptions))
+                st.session_state.excel_mapping = excel_mapping
+                target_nm_ids = list(excel_mapping.keys())
+                
+                st.success(f"✅ Из Excel успешно загружено уникальных описаний для артикулов: {len(target_nm_ids)}")
+                
+                if st.button("🔍 Шаг 1: Проверить карточки и сопоставить описания из Excel", type="primary"):
+                    with st.spinner("Синхронизация данных с серверами Wildberries..."):
+                        all_fetched_cards = []
+                        chunks = list(chunk_list(target_nm_ids, 100))
+                        for chunk in chunks:
+                            cards = fetch_cards_by_ids(chunk, wb_token)
+                            all_fetched_cards.extend(cards)
                         
-                        for card in all_fetched_cards:
+                        if all_fetched_cards:
+                            st.session_state.fetched_data = all_fetched_cards
+                            preview_rows = []
+                            
+                            for card in all_fetched_cards:
+                                nm_id = int(card.get("nmID"))
+                                vendor_code = card.get("vendorCode", "")
+                                title = card.get("title", "—")
+                                brand = card.get("brand", "—")
+                                old_desc = card.get("description", "")
+                                
+                                match = re.search(r'["«](.*?)["»]', old_desc)
+                                print_name = match.group(1).strip() if match else card.get("title", "").replace("Металлическая пластина для телефона", "").strip()
+                                
+                                excel_template = excel_mapping.get(nm_id, "")
+                                final_desc_preview = excel_template.format(print_name=print_name) if "{print_name}" in str(excel_template) else str(excel_template)
+                                
+                                dimensions_old = card.get("dimensions", {})
+                                old_dims_str = f"{dimensions_old.get('length', '—')}x{dimensions_old.get('width', '—')}x{dimensions_old.get('height', '—')}"
+                                
+                                preview_rows.append({
+                                    "Артикул nmID": nm_id,
+                                    "Артикул продавца": vendor_code,
+                                    "Текущее Название (БЕЗОПАСНО)": title,
+                                    "Текущий Бренд (БЕЗОПАСНО)": brand,
+                                    "Вытащенный принт": print_name,
+                                    "Сгенерированный текст из Excel": final_desc_preview[:120] + "..." if len(final_desc_preview) > 120 else final_desc_preview,
+                                    "Размеры упаковки": f"{new_length}x{new_width}x{new_height}"
+                                })
+                            st.session_state.df_preview = pd.DataFrame(preview_rows)
+                        else:
+                            st.warning("⚠️ Не найдено карточек. Проверьте правильность токена контента или nmID в Excel.")
+                
+                if st.session_state.df_preview is not None:
+                    st.subheader("👀 Таблица предварительного контроля данных")
+                    st.markdown("Внимательно проверьте **Текущее Название и Текущий Бренд** — они взяты из вашей действующей базы WB. Если всё на месте и новые тексты сопоставлены верно, можно отправлять пачку в работу.")
+                    st.dataframe(st.session_state.df_preview, use_container_width=True)
+                    
+                    st.subheader("🚀 Массовое сохранение изменений")
+                    if st.button("🔥 Шаг 2: Отправить уникальные описания и габариты в Wildberries"):
+                        progress_bar = st.progress(0)
+                        status_text = st.empty()
+                        cards_to_update = st.session_state.fetched_data
+                        total_cards = len(cards_to_update)
+                        update_payload_batch = []
+                        success_count = 0
+                        
+                        for index, card in enumerate(cards_to_update, 1):
                             nm_id = int(card.get("nmID"))
-                            vendor_code = card.get("vendorCode", "")
-                            title = card.get("title", "—")
-                            brand = card.get("brand", "—")
                             old_desc = card.get("description", "")
                             
                             match = re.search(r'["«](.*?)["»]', old_desc)
                             print_name = match.group(1).strip() if match else card.get("title", "").replace("Металлическая пластина для телефона", "").strip()
                             
-                            excel_template = excel_mapping.get(nm_id, "")
-                            final_desc_preview = excel_template.format(print_name=print_name) if "{print_name}" in str(excel_template) else str(excel_template)
+                            raw_excel_text = st.session_state.excel_mapping.get(nm_id, "")
+                            final_description = raw_excel_text.format(print_name=print_name) if "{print_name}" in str(raw_excel_text) else str(raw_excel_text)
                             
-                            dimensions_old = card.get("dimensions", {})
-                            old_dims_str = f"{dimensions_old.get('length', '—')}x{dimensions_old.get('width', '—')}x{dimensions_old.get('height', '—')}"
+                            if len(final_description) > 5000:
+                                st.warning(f"⚠️ Артикул {nm_id}: Текст превышает 5000 символов. Пропущен.")
+                                continue
                             
-                            preview_rows.append({
-                                "Артикул nmID": nm_id,
-                                "Артикул продавца": vendor_code,
-                                "Текущее Название (БЕЗОПАСНО)": title,
-                                "Текущий Бренд (БЕЗОПАСНО)": brand,
-                                "Вытащенный принт": print_name,
-                                "Сгенерированный текст из Excel": final_desc_preview[:120] + "..." if len(final_desc_preview) > 120 else final_desc_preview,
-                                "Размеры упаковки": f"{new_length}x{new_width}x{new_height}"
-                            })
-                        st.session_state.df_preview = pd.DataFrame(preview_rows)
-                    else:
-                        st.warning("⚠️ Не найдено карточек. Проверьте правильность токена контента или nmID в Excel.")
-            
-            if st.session_state.df_preview is not None:
-                st.subheader("👀 Таблица предварительного контроля данных")
-                st.markdown("Внимательно проверьте **Текущее Название и Текущий Бренд** — они взяты из вашей действующей базы WB. Если всё на месте и новые тексты сопоставлены верно, можно отправлять пачку в работу.")
-                st.dataframe(st.session_state.df_preview, use_container_width=True)
-                
-                st.subheader("🚀 Массовое сохранение изменений")
-                if st.button("🔥 Шаг 2: Отправить уникальные описания и габариты в Wildberries"):
-                    progress_bar = st.progress(0)
-                    status_text = st.empty()
-                    cards_to_update = st.session_state.fetched_data
-                    total_cards = len(cards_to_update)
-                    update_payload_batch = []
-                    success_count = 0
-                    
-                    for index, card in enumerate(cards_to_update, 1):
-                        nm_id = int(card.get("nmID"))
-                        old_desc = card.get("description", "")
-                        
-                        match = re.search(r'["«](.*?)["»]', old_desc)
-                        print_name = match.group(1).strip() if match else card.get("title", "").replace("Металлическая пластина для телефона", "").strip()
-                        
-                        raw_excel_text = st.session_state.excel_mapping.get(nm_id, "")
-                        final_description = raw_excel_text.format(print_name=print_name) if "{print_name}" in str(raw_excel_text) else str(raw_excel_text)
-                        
-                        if len(final_description) > 5000:
-                            st.warning(f"⚠️ Артикул {nm_id}: Текст превышает 5000 символов. Пропущен.")
-                            continue
-                        
-                        characteristics = card.get("characteristics", [])
-                        for char in characteristics:
-                            char_name = str(char.get("name", "")).lower()
-                            for trigger_word, new_val in PACK_TRIGGERS.items():
-                                if trigger_word == char_name:
-                                    char["value"] = [str(new_val)]
-                        
-                        clean_card = {
-                            "nmID": nm_id,
-                            "vendorCode": card.get("vendorCode"),
-                            "description": final_description,
-                            "dimensions": {
-                                "length": int(new_length),
-                                "width": int(new_width),
-                                "height": int(new_height)
-                            },
-                            "characteristics": characteristics,
-                            "sizes": card.get("sizes", [])
-                        }
-                        if "mediaFiles" in card:
-                            clean_card["mediaFiles"] = card["mediaFiles"]
+                            characteristics = card.get("characteristics", [])
+                            for char in characteristics:
+                                char_name = str(char.get("name", "")).lower()
+                                for trigger_word, new_val in PACK_TRIGGERS.items():
+                                    if trigger_word == char_name:
+                                        char["value"] = [str(new_val)]
                             
-                        update_payload_batch.append(clean_card)
+                            clean_card = {
+                                "nmID": nm_id,
+                                "vendorCode": card.get("vendorCode"),
+                                "description": final_description,
+                                "dimensions": {
+                                    "length": int(new_length),
+                                    "width": int(new_width),
+                                    "height": int(new_height)
+                                },
+                                "characteristics": characteristics,
+                                "sizes": card.get("sizes", [])
+                            }
+                            if "mediaFiles" in card:
+                                clean_card["mediaFiles"] = card["mediaFiles"]
+                                
+                            update_payload_batch.append(clean_card)
+                            
+                            if len(update_payload_batch) == 100 or index == total_cards:
+                                status_text.text(f"Синхронизация пачки уникальных изменений ({index}/{total_cards})...")
+                                success, msg = send_update_batch(update_payload_batch, wb_token)
+                                if success:
+                                    success_count += len(update_payload_batch)
+                                else:
+                                    st.error(f"Ошибка WB: {msg}")
+                                update_payload_batch = []
+                                if index < total_cards:
+                                    time.sleep(8)
+                            progress_bar.progress(index / total_cards)
                         
-                        if len(update_payload_batch) == 100 or index == total_cards:
-                            status_text.text(f"Синхронизация пачки уникальных изменений ({index}/{total_cards})...")
-                            success, msg = send_update_batch(update_payload_batch, wb_token)
-                            if success:
-                                success_count += len(update_payload_batch)
-                            else:
-                                st.error(f"Ошибка WB: {msg}")
-                            update_payload_batch = []
-                            if index < total_cards:
-                                time.sleep(8)
-                        progress_bar.progress(index / total_cards)
-                    
-                    status_text.empty()
-                    st.success(f"🎉 Процесс полностью завершен! Успешно и безопасно обновлено карточек: {success_count} из {total_cards}")
-                    st.session_state.fetched_data = None
-                    st.session_state.df_preview = None
+                        status_text.empty()
+                        st.success(f"🎉 Процесс полностью завершен! Успешно и безопасно обновлено карточек: {success_count} из {total_cards}")
+                        st.session_state.fetched_data = None
+                        st.session_state.df_preview = None
     except Exception as e:
         st.error(f"Не удалось распознать Excel файл: {e}")
 else:
