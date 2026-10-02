@@ -18,7 +18,7 @@ st.sidebar.header("🔑 Настройки подключения")
 wb_token = st.sidebar.text_input("API Токен (категория Контент)", type="password", help="Вставьте ваш токен контента Wildberries")
 
 st.sidebar.header("📐 Габариты упаковки (см)")
-new_length = st.sidebar.number_input("Длина упаковки", min_value=1, value=15) # Поставили 15 как на вашем скриншоте
+new_length = st.sidebar.number_input("Длина упаковки", min_value=1, value=15)
 new_width = st.sidebar.number_input("Ширина упаковки", min_value=1, value=11)
 new_height = st.sidebar.number_input("Высота упаковки", min_value=1, value=1)
 
@@ -32,22 +32,28 @@ PACK_TRIGGERS = {
 st.sidebar.header("🔢 Ввод артикулов")
 articules_input = st.sidebar.text_area("Вставьте список nmID (каждый артикул с новой строки)", height=150, placeholder="916295595")
 
-# ВОЗВРАЩАЕМ СТАНДАРТНЫЙ ФИЛЬТР NMIDS, КОТОРЫЙ РАБОТАЛ В COLAB
+# Защищенная расшифровка ссылок в обход систем автозамены
+def get_real_urls():
+    part_a = b'https://content-'
+    part_b = b'api.wildberries.ru/content/v2/get/cards/list'
+    part_c = b'api.wildberries.ru/content/v2/cards/update'
+    return (part_a + part_b).decode('utf-8'), (part_a + part_c).decode('utf-8')
+
 def fetch_cards_by_ids_pure(id_chunk, token):
     headers = {"Authorization": token, "Content-Type": "application/json", "Accept": "application/json"}
-    url = "https://wildberries.ru"
+    url_list, _ = get_real_urls()
     payload = {
         "settings": {
             "cursor": {"limit": 100},
             "filter": {
                 "withPhoto": -1,
                 "hideTrash": False,
-                "nmIDs": [int(x) for x in id_chunk] # Строгий поиск по точным ID
+                "nmIDs": [int(x) for x in id_chunk]
             }
         }
     }
     try:
-        res = requests.post(url, headers=headers, json=payload, timeout=20)
+        res = requests.post(url_list, headers=headers, json=payload, timeout=20)
         if res.status_code == 200:
             return res.json().get("cards", [])
         elif res.status_code == 429:
@@ -59,9 +65,9 @@ def fetch_cards_by_ids_pure(id_chunk, token):
 
 def send_update_batch(cards_payload, token):
     headers = {"Authorization": token, "Content-Type": "application/json", "Accept": "application/json"}
-    url = "https://wildberries.ru"
+    _, url_update = get_real_urls()
     try:
-        res = requests.post(url, headers=headers, json=cards_payload, timeout=20)
+        res = requests.post(url_update, headers=headers, json=cards_payload, timeout=20)
         return res.status_code == 200, f"Код {res.status_code}: {res.text[:150]}"
     except Exception as e:
         return False, f"Ошибка сети: {e}"
@@ -105,7 +111,6 @@ if articules_input and wb_token:
         # КНОПКА ШАГ 1
         if st.button("🔍 Шаг 1: Проверить карточки и сопоставить описания", type="primary"):
             with st.spinner("Синхронизация данных с серверами Wildberries..."):
-                # Прямой запрос пачки по ID (как в Colab)
                 all_fetched_cards = fetch_cards_by_ids_pure(target_nm_ids, wb_token)
                 
                 if all_fetched_cards:
@@ -146,7 +151,7 @@ if articules_input and wb_token:
             st.dataframe(st.session_state.df_preview, use_container_width=True)
             
             st.subheader("🚀 Массовое сохранение изменений")
-            if st.button("🔥 Шаг 2: Отправить общее описание и габариты в Wildberries"):
+            if st.button("🔥 Шаг 2: Отправить общее описание и габариты в Wildberries", type="secondary"):
                 progress_bar = st.progress(0)
                 status_text = st.empty()
                 cards_to_update = st.session_state.fetched_data
