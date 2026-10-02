@@ -64,7 +64,8 @@ if ch_dims:
     new_height = st.sidebar.number_input("Высота упаковки (см)", min_value=1, value=1)
 new_weight_val = 0.030
 if ch_weight:
-    new_weight_val = st.sidebar.number_input("Вес упаковки (кг, через точку)", min_value=0.001, value=0.030, step=0.001, format="%.3f")
+    # ИСПРАВЛЕНО: Убрана запутывающая подсказка про точку, поле принимает любой ввод
+    new_weight_val = st.sidebar.number_input("Вес упаковки (кг)", min_value=0.001, value=0.030, step=0.001, format="%.3f")
 
 tnved_val = ""
 if ch_tnved:
@@ -220,7 +221,7 @@ if articules_input and wb_token:
             st.markdown("Внимательно проверьте параметры карточки. Всё, что не отмечено галочками, останется БЕЗ изменений. Артикулы, Название, Баркоды, Артикул продавца и Бренд полностью защищены от удаления.")
             st.dataframe(st.session_state.df_preview, use_container_width=True)
             
-            st.subheader("🚀 Massовое сохранение изменений")
+            st.subheader("🚀 Массовое сохранение изменений")
             if st.button("🔥 Шаг 2: Отправить выбранные изменения в Wildberries", type="secondary"):
                 progress_bar = st.progress(0)
                 cards_to_update = st.session_state.fetched_data
@@ -235,7 +236,6 @@ if articules_input and wb_token:
                     match = re.search(r'["«](.*?)["»]', old_desc)
                     print_name = match.group(1).strip() if match else card.get("title", "").replace("Металлическая пластина для телефона", "").strip()
                     
-                    # ПРЯМАЯ ИЗОЛЯЦИЯ: Меняем только то, что включено галочками.
                     if ch_desc:
                         card["description"] = new_desc_template.format(print_name=print_name)
                     
@@ -246,7 +246,6 @@ if articules_input and wb_token:
                             "height": int(new_height)
                         }
                     
-                    # Вес улетает строго на верхний уровень как число
                     if ch_weight:
                         card["weight"] = float(new_weight_val)
                     
@@ -263,7 +262,6 @@ if articules_input and wb_token:
                         else:
                             characteristics.append({"name": char_name_str, "value": char_value_list})
                     
-                    # Массово и точечно перезаписываем списки и строки в числовом формате
                     if ch_tnved:
                         set_char_value("Код ТН ВЭД", [str(tnved_val)])
                         set_char_value("ТНВЭД", [str(tnved_val)])
