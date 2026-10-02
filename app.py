@@ -24,7 +24,6 @@ st.sidebar.header("🔢 Товар")
 articules_input = st.sidebar.text_area("Артикулы nmID (каждый с новой строки)", height=80, placeholder="916295595")
 
 st.sidebar.header("🎯 Выберите поля для изменения:")
-# Галочки строго определяют, какие поля будут отправлены в WB
 ch_desc = st.sidebar.checkbox("Изменить Описание", value=True)
 ch_dims = st.sidebar.checkbox("Изменить Габариты упаковки", value=False)
 ch_weight = st.sidebar.checkbox("Изменить Вес с упаковкой", value=False)
@@ -37,7 +36,6 @@ ch_povod = st.sidebar.checkbox("Изменить Повод", value=False)
 
 st.sidebar.header("📝 Новые значения:")
 
-# Сбор данных с полей ввода на боковой панели
 new_length, new_width, new_height = 18, 14, 1
 if ch_dims:
     new_length = st.sidebar.number_input("Длина упаковки (см)", min_value=1, value=18)
@@ -220,7 +218,9 @@ if articules_input and wb_token:
                     if ch_weight:
                         set_char_value("Вес с упаковкой (кг)", [str(new_weight_val)])
                     if ch_tnved:
+                        # УДАР ПО ОБОИМ ВАРИАНТАМ НАЗВАНИЙ ИЗ БАЗЫ ДАННЫХ WB В ДВА НАПРАВЛЕНИЯ
                         set_char_value("Код ТН ВЭД", [str(tnved_val)])
+                        set_char_value("ТНВЭД", [str(tnved_val)])
                     if ch_complect:
                         set_char_value("Комплектация", text_to_wb_list(complect_val))
                     if ch_material:
@@ -257,7 +257,7 @@ if articules_input and wb_token:
                             time.sleep(8)
                     progress_bar.progress(index / total_cards)
                 
-                st.success(f"🎉 Процесс завершен! Успешно изменено карточек: {success_count} из {total_cards}")
+                st.success(f"🎉 Процесс полностью завершен! Успешно изменено карточек: {success_count} из {total_cards}")
                 st.session_state.fetched_data = None
                 st.session_state.df_preview = None
 else:
