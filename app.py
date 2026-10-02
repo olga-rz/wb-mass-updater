@@ -35,7 +35,7 @@ PACK_TRIGGERS = {
 st.sidebar.header("📂 Загрузка Excel-таблицы")
 uploaded_file = st.sidebar.file_uploader("Выберите файл таблицы (.xlsx)", type=["xlsx"])
 
-# ИСПРАВЛЕНО: Точечный поиск поштучно через textSearch (официальный и самый быстрый метод WB v2)
+# Точечный поиск поштучно через textSearch
 def fetch_single_card_by_id(nm_id, token):
     headers = {"Authorization": token, "Content-Type": "application/json", "Accept": "application/json"}
     url = "https://wildberries.ru"
@@ -45,7 +45,7 @@ def fetch_single_card_by_id(nm_id, token):
             "filter": {
                 "withPhoto": -1,
                 "hideTrash": False,
-                "textSearch": str(nm_id)  # Ищем конкретный артикул через текстовый шлюз поиска
+                "textSearch": str(nm_id)
             }
         }
     }
@@ -53,7 +53,6 @@ def fetch_single_card_by_id(nm_id, token):
         res = requests.post(url, headers=headers, json=payload, timeout=20)
         if res.status_code == 200:
             cards = res.json().get("cards", [])
-            # Проверяем строгое совпадение ID, чтобы исключить похожие артикулы
             return [c for c in cards if int(c.get("nmID", 0)) == int(nm_id)]
         elif res.status_code == 429:
             time.sleep(15)
@@ -111,7 +110,7 @@ if uploaded_file and wb_token:
                         for current_id in target_nm_ids:
                             single_card_list = fetch_single_card_by_id(current_id, wb_token)
                             all_fetched_cards.extend(single_card_list)
-                            time.append = time.sleep(0.2)  # Короткая микро-пауза для стабильности
+                            time.sleep(0.2)  # ИСПРАВЛЕНО: Чистая микро-пауза без синтаксических ошибок
                         
                         if all_fetched_cards:
                             st.session_state.fetched_data = all_fetched_cards
