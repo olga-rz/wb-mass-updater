@@ -107,13 +107,13 @@ def get_real_urls():
     part_c = b'api.wildberries.ru/content/v2/cards/update'
     return (part_a + part_b).decode('utf-8'), (part_a + part_c).decode('utf-8')
 
-# МГНОВЕННЫЙ ТОЧЕЧНЫЙ ПОИСК: Нарезает введённые артикулы на пачки по 100 и склеивает их за секунды
+# ПАКЕТНЫЙ ПОИСК: Нарезает список nmID любой длины по 100 штук и запрашивает их точечно, обходя лимиты
 def fetch_cards_by_ids_pure(id_chunk, token):
     headers = {"Authorization": token, "Content-Type": "application/json", "Accept": "application/json"}
     url_list, _ = get_real_urls()
     all_found_cards = []
     
-    # Разбиваем список пользователя на подсписки по 100 nmID
+    # Режем массив пользователя на подсписки по 100 nmID
     sub_chunks = [id_chunk[i:i + 100] for i in range(0, len(id_chunk), 100)]
     
     for chunk in sub_chunks:
@@ -128,10 +128,10 @@ def fetch_cards_by_ids_pure(id_chunk, token):
             if res.status_code == 200:
                 cards = res.json().get("cards", [])
                 all_found_cards.extend(cards)
-                time.sleep(0.3)
+                time.sleep(0.3) # Безопасная техническая пауза
             elif res.status_code == 429:
-                time.sleep(10)
-                sub_chunks.insert(0, chunk) # Повторяем пачку
+                time.sleep(12)
+                sub_chunks.insert(0, chunk) # Повторный запрос пачки
         except Exception as e:
             pass
             
@@ -224,8 +224,12 @@ if articules_input and wb_token:
                     st.warning("⚠️ Не найдено карточек. Проверьте правильность токена контента или введённых nmID.")
         if st.session_state.df_preview is not None:
             st.subheader("👀 Таблица предварительного контроля данных")
-            st.markdown(f"Отображено найденных карточек в системе: {len(st.session_state.df_preview)} из {len(target_nm_ids)}")
-            st.dataframe(st.session_state.df_preview, use_container_width=True)
+            
+            # Крупный информационный счётчик выгрузки
+            st.info(f"📊 Всего уникальных карточек подготовлено к обработке: {len(st.session_state.df_preview)}")
+            
+            # Снимаем встроенный лимит отображения Streamlit (показываем всю таблицу без обрезки)
+            st.dataframe(st.session_state.df_preview, use_container_width=True, height=min(len(st.session_state.df_preview) * 36 + 100, 800))
             
             st.subheader("🚀 Массовое сохранение изменений")
             if st.button("🔥 Шаг 2: Отправить выбранные изменения в Wildberries", type="secondary"):
@@ -269,11 +273,10 @@ if articules_input and wb_token:
                         else:
                             characteristics.append({"name": char_name_str, "value": char_value_list})
                     
-                    # ВОЗВРАЩЁННЫЙ РАБОЧИЙ ДВОЙНОЙ УДАР ПО ТН ВЭД СТРОГО СПИСКОМ СТРОК ["код"]
+                    # ПРАВИЛЬНЫЙ ДВОЙНОЙ УДАР ПО ТН ВЭД И КОМПЛЕКТАЦИИ
                     if ch_tnved:
                         set_char_value("Код ТН ВЭД", [str(tnved_val)])
                         set_char_value("ТНВЭД", [str(tnved_val)])
-                        
                     if ch_complect: 
                         set_char_value("Комплектация", text_to_wb_list_by_sep(complect_val, separator=";"))
                     if ch_material: set_char_value("Материал изделия", text_to_wb_list_by_sep(material_val, separator=","))
