@@ -15,7 +15,7 @@ if "df_preview" not in st.session_state:
     st.session_state.df_preview = None
 
 st.sidebar.header("🔑 Настройки подключения")
-wb_token = st.sidebar.text_input("API Токен (категория Контент)", type="password", help="Вставьте ваш токен контента Wildberries")
+wb_token = st.sidebar.text_input("API Токен (категорияindex Контент)", type="password", help="Вставьте ваш токен контента Wildberries")
 
 st.sidebar.header("📐 Габариты упаковки (см)")
 new_length = st.sidebar.number_input("Длина упаковки", min_value=1, value=15)
@@ -32,7 +32,6 @@ PACK_TRIGGERS = {
 st.sidebar.header("🔢 Ввод артикулов")
 articules_input = st.sidebar.text_area("Вставьте список nmID (каждый артикул с новой строки)", height=150, placeholder="916295595")
 
-# Защищенная расшифровка ссылок в обход систем автозамены
 def get_real_urls():
     part_a = b'https://content-'
     part_b = b'api.wildberries.ru/content/v2/get/cards/list'
@@ -55,7 +54,9 @@ def fetch_cards_by_ids_pure(id_chunk, token):
     try:
         res = requests.post(url_list, headers=headers, json=payload, timeout=20)
         if res.status_code == 200:
-            return res.json().get("cards", [])
+            cards = res.json().get("cards", [])
+            # ИСПРАВЛЕНО: Жёстко фильтруем ответ WB, оставляя только те артикулы, которые запросил пользователь
+            return [c for c in cards if int(c.get("nmID", 0)) in id_chunk]
         elif res.status_code == 429:
             time.sleep(15)
             return fetch_cards_by_ids_pure(id_chunk, token)
@@ -92,7 +93,7 @@ new_desc_template = st.text_area(
 Это отличный подарок мужу, парню, другу или коллеге на любой праздник. Стильная пластина также может использоваться как декоративный элемент на ноутбук или планшет.
 
 Важно по установке:
-Чтобы ваш автомобильный аксессуар держал максимально крепко, приклейте его на внешнюю сторону чехла. Перед установкой обязательно обезжирьте поверхность.""",
+Чтобы ваш автомобильный аксессуар держал максимально крепко, приклейте его на внешнюю сторону чехла. Перед установкой обязательно OpenCV обезжирьте поверхность.""",
     height=250
 )
 
@@ -147,7 +148,7 @@ if articules_input and wb_token:
         # Вывод интерактивного окна предпросмотра
         if st.session_state.df_preview is not None:
             st.subheader("👀 Таблица предварительного контроля данных")
-            st.markdown("Внимательно проверьте **Текущее Название и Текущий Бренд** — они взяты из вашей действующей базы WB. Если всё на месте и новые тексты сопоставлены верно, можно отправлять пачку в работу.")
+            st.markdown("Внимательно проверьте данные. В таблице ниже отображаются только те артикулы, которые вы ввели вручную.")
             st.dataframe(st.session_state.df_preview, use_container_width=True)
             
             st.subheader("🚀 Массовое сохранение изменений")
