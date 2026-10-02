@@ -7,7 +7,7 @@ import time
 st.set_page_config(page_title="WB Armor Box Updater", layout="wide", page_icon="🛡️")
 
 st.title("🛡️ Защищённый комбайн карточек Wildberries v2")
-st.caption("Точечное изменение характеристик по галочкам с абсолютной защитой от удаления Названий и Брендов")
+st.caption("Точечное изменение характеристик по галочкам с абсолютной защитой от удаления Названий, Брендов и Артикулов")
 
 if "fetched_data" not in st.session_state:
     st.session_state.fetched_data = None
@@ -172,7 +172,7 @@ if articules_input and wb_token:
                         # Собираем строку для вывода в таблицу предварительного контроля
                         row_data = {
                             "Артикул nmID (ЗАЩИЩЕН)": nm_id,
-                            "Артикул продавца": card.get("vendorCode", ""),
+                            "Артикул продавца (ЗАЩИЩЕН)": card.get("vendorCode", ""),
                             "Название (ЗАЩИЩЕНО)": card.get("title", "—"),
                             "Бренд (ЗАЩИЩЕНО)": card.get("brand", "—"),
                             "Баркоды (ЗАЩИЩЕНО)": barcodes_str,
@@ -226,7 +226,10 @@ if articules_input and wb_token:
                     
                     # 2. ОБНОВЛЕНИЕ ГАБАРИТОВ ПО ГАЛОЧКЕ
                     final_dimensions = card.get("dimensions", {"length": 18, "width": 14, "height": 1})
-                    if ch_dims:
+                    if not ch_dims:
+                        # Если галочка выключена, принудительно забираем старые размеры из базы WB
+                        final_dimensions = card.get("dimensions", {"length": 18, "width": 14, "height": 1})
+                    else:
                         final_dimensions = {
                             "length": int(new_length),
                             "width": int(new_width),
@@ -245,7 +248,7 @@ if articules_input and wb_token:
                         else:
                             characteristics.append({"name": char_name_str, "value": char_value_list})
                     
-                    # Перезаписываем строго то, что выбрано по галочкам
+                    # Перезаписываем строго то, что выбрано по галочкам. Всё остальное летит обратно в WB старым
                     if ch_weight: set_char_value("Вес с упаковкой (кг)", [str(new_weight_val)])
                     if ch_tnved:
                         set_char_value("Код ТН ВЭД", [str(tnved_val)])
@@ -261,7 +264,7 @@ if articules_input and wb_token:
                     if ch_model: set_char_value("Модель", [str(model_val)])
                     if ch_fragile: set_char_value("Хрупкость", [str(fragile_val)])
                     
-                    # Формируем финальную карточку
+                    # Формируем финальную карточку (Название, Бренд и Ссылка на фото на 100% летят старыми и защищены)
                     clean_card = {
                         "nmID": nm_id,
                         "vendorCode": card.get("vendorCode"),
