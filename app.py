@@ -14,7 +14,6 @@ if "fetched_data" not in st.session_state:
 if "df_preview" not in st.session_state:
     st.session_state.df_preview = None
 
-# Инициализация состояний для кнопок «Выделить всё / Сбросить всё»
 if "checkbox_state" not in st.session_state:
     st.session_state.checkbox_state = False
 
@@ -48,12 +47,13 @@ ch_tnved = st.sidebar.checkbox("Изменить ТН ВЭД / ТНВЭД", valu
 ch_group = st.sidebar.checkbox("Изменить Группу (объединение)", value=default_val)
 ch_complect = st.sidebar.checkbox("Изменить Комплектацию", value=default_val)
 ch_material = st.sidebar.checkbox("Изменить Материал изделия", value=default_val)
-ch_nazn = st.sidebar.checkbox("Изменить Назначение товара", value=default_val)
+ch_nazn = st.sidebar.checkbox("Изменить Назначение держателя в авто", value=default_val)
 ch_gift = st.sidebar.checkbox("Изменить Назначение подарка", value=default_val)
 ch_povod = st.sidebar.checkbox("Изменить Повод", value=default_val)
 ch_item_dims = st.sidebar.checkbox("Изменить Размеры предмета", value=default_val)
 ch_model = st.sidebar.checkbox("Изменить Модель", value=default_val)
 ch_fragile = st.sidebar.checkbox("Изменить Хрупкость", value=default_val)
+ch_kreplenie = st.sidebar.checkbox("Изменить Тип крепления", value=default_val)
 
 st.sidebar.header("📝 Новые значения:")
 
@@ -84,7 +84,7 @@ if ch_material:
 
 nazn_val = ""
 if ch_nazn:
-    nazn_val = st.sidebar.text_input("Назначение товара (через запятую)", value="смартфоны и мобильные телефоны, навигаторы, планшеты")
+    nazn_val = st.sidebar.text_input("Назначение держателя в авто (через запятую)", value="смартфоны, для навигатора, для автодержателя, планшеты")
 
 gift_val = ""
 if ch_gift:
@@ -106,6 +106,10 @@ if ch_model:
 fragile_val = ""
 if ch_fragile:
     fragile_val = st.sidebar.text_input("Хрупкость", value="не хрупкое")
+
+kreplenie_val = ""
+if ch_kreplenie:
+    kreplenie_val = st.sidebar.text_input("Тип крепления (через запятую)", value="клейкая поверхность, двусторонний скотч")
 
 def get_real_urls():
     part_a = b'https://content-'
@@ -184,9 +188,6 @@ if articules_input and wb_token:
                             barcodes_found.extend(sz.get("skus", []))
                         barcodes_str = ", ".join(barcodes_found) if barcodes_found else "—"
                         
-                        dimensions_old = card.get("dimensions", {})
-                        old_dims_str = f"{dimensions_old.get('length', '—')}x{dimensions_old.get('width', '—')}x{dimensions_old.get('height', '—')}"
-                        
                         row_data = {
                             "Артикул nmID (ЗАЩИЩЕН)": nm_id,
                             "Артикул продавца (ЗАЩИЩЕН)": card.get("vendorCode", ""),
@@ -200,15 +201,16 @@ if articules_input and wb_token:
                         if ch_dims: row_data["Размеры упаковки"] = f"{new_length}x{new_width}x{new_height}"
                         if ch_weight: row_data["Вес упаковки (кг)"] = f"{new_weight_val:.3f}"
                         if ch_tnved: row_data["Код ТН ВЭД / ТНВЭД"] = tnved_val
-                        if ch_group: row_data["Группа (Объединение)"] = group_val
-                        if ch_complect: row_data["Комплектация"] = complect_val[:40] + "..." if len(complect_val) > 40 else complect_val
+                        if ch_group: row_data["Группа"] = group_val
+                        if ch_complect: row_data["Комплектация"] = complect_val[:40] + "..."
                         if ch_material: row_data["Материал изделия"] = material_val
-                        if ch_nazn: row_data["Назначение товара"] = nazn_val
+                        if ch_nazn: row_data["Назначение держателя"] = nazn_val[:40] + "..."
                         if ch_gift: row_data["Назначение подарка"] = gift_val
                         if ch_povod: row_data["Повод"] = povod_val
                         if ch_item_dims: row_data["Размеры предмета"] = f"В:{item_height_val} x Ш:{item_width_val}"
                         if ch_model: row_data["Модель"] = model_val
                         if ch_fragile: row_data["Хрупкость"] = fragile_val
+                        if ch_kreplenie: row_data["Тип крепления"] = kreplenie_val
                         
                         preview_rows.append(row_data)
                         
@@ -217,7 +219,6 @@ if articules_input and wb_token:
                     st.warning("⚠️ Не найдено карточек. Проверьте правильность токена контента или введённых nmID.")
         if st.session_state.df_preview is not None:
             st.subheader("👀 Таблица предварительного контроля данных")
-            st.markdown("Внимательно проверьте параметры карточки. Всё, что не отмечено галочками, останется БЕЗ изменений. Артикулы, Название, Баркоды, Артикул продавца и Бренд полностью защищены от удаления.")
             st.dataframe(st.session_state.df_preview, use_container_width=True)
             
             st.subheader("🚀 Массовое сохранение изменений")
@@ -262,21 +263,35 @@ if articules_input and wb_token:
                         else:
                             characteristics.append({"name": char_name_str, "value": char_value_list})
                     
+                    # ПРЯМАЯ ИСПРАВЛЕННАЯ НАСТРОЙКА ХАРАКТЕРИСТИК ДЛЯ ВЕРСИИ v2
                     if ch_tnved:
                         set_char_value("Код ТН ВЭД", [str(tnved_val)])
                         set_char_value("ТНВЭД", [str(tnved_val)])
                     if ch_complect: set_char_value("Комплектация", text_to_wb_list(complect_val))
                     if ch_material: set_char_value("Материал изделия", text_to_wb_list(material_val))
-                    if ch_nazn: set_char_value("Назначение товара", text_to_wb_list(nazn_val))
+                    
+                    if ch_nazn:
+                        # Назначение передаем строго списком разделенных тегов
+                        set_char_value("Назначение держателя в авто", text_to_wb_list(nazn_val))
+                        set_char_value("Назначение товара", text_to_wb_list(nazn_val))
+                        
                     if ch_gift: set_char_value("Назначение подарка", text_to_wb_list(gift_val))
                     if ch_povod: set_char_value("Повод", text_to_wb_list(povod_val))
                     
                     if ch_item_dims:
+                        # Числа передаем строго как ЧИСЛА (целые), дублируя в оба системных имени колонки
                         set_char_value("Высота предмета (см)", [int(item_height_val)])
                         set_char_value("Ширина предмета (см)", [int(item_width_val)])
+                        set_char_value("Высота предмета", [int(item_height_val)])
+                        set_char_value("Ширина предмета", [int(item_width_val)])
                         
                     if ch_model: set_char_value("Модель", [str(model_val)])
                     if ch_fragile: set_char_value("Хрупкость", [str(fragile_val)])
+                    
+                    if ch_kreplenie:
+                        # Тип крепления передаем строго списком тегов
+                        set_char_value("Тип крепления", text_to_wb_list(kreplenie_val))
+                        set_char_value("Способ крепления", text_to_wb_list(kreplenie_val))
                     
                     if ch_group:
                         card["targetUrl"] = str(group_val)
