@@ -14,7 +14,6 @@ if "fetched_data" not in st.session_state:
 if "df_preview" not in st.session_state:
     st.session_state.df_preview = None
 
-# Инициализация состояний для кнопок «Выделить всё / Сбросить всё»
 if "checkbox_state" not in st.session_state:
     st.session_state.checkbox_state = False
 
@@ -44,7 +43,7 @@ default_val = st.session_state.checkbox_state
 ch_desc = st.sidebar.checkbox("Изменить Описание", value=default_val)
 ch_dims = st.sidebar.checkbox("Изменить Габариты упаковки", value=default_val)
 ch_weight = st.sidebar.checkbox("Изменить Вес с упаковкой (кг)", value=default_val)
-ch_tnved = st.sidebar.checkbox("Изменить ТН ВЭД / ТНВЭД", value=default_val)
+ch_tnved = st.sidebar.checkbox("Изменить Код ТН ВЭД", value=default_val)
 ch_complect = st.sidebar.checkbox("Изменить Комплектацию", value=default_val)
 ch_material = st.sidebar.checkbox("Изменить Материал изделия", value=default_val)
 ch_nazn = st.sidebar.checkbox("Изменить Назначение держателя в авто", value=default_val)
@@ -67,11 +66,11 @@ if ch_weight:
 
 tnved_val = ""
 if ch_tnved:
-    tnved_val = st.sidebar.text_input("Код ТН ВЭД / ТНВЭД (10 цифр)", value="3926909709")
+    tnved_val = st.sidebar.text_input("Код ТН ВЭД (10 цифр)", value="3926909709")
 
 complect_val = ""
 if ch_complect:
-    complect_val = st.sidebar.text_area("Комплектация (через запятую)", value="Металлическая пластина - 1 шт, Двухсторонний скотч - 1 шт")
+    complect_val = st.sidebar.text_area("Комплектация (через точку с запятой ';')", value="Металлическая пластина - 1 шт; Двухсторонний скотч - 1 шт")
 
 material_val = ""
 if ch_material:
@@ -107,26 +106,66 @@ def get_real_urls():
     part_c = b'api.wildberries.ru/content/v2/cards/update'
     return (part_a + part_b).decode('utf-8'), (part_a + part_c).decode('utf-8')
 
+# УМНАЯ СЛУЖБА МАССОВОЙ ВЫГРУЗКИ КАРТОЧЕК С ЦИКЛОМ ПАГИНАЦИИ ДО КРУГЛОГО КОНЦА БАЗЫ
 def fetch_cards_by_ids_pure(id_chunk, token):
     headers = {"Authorization": token, "Content-Type": "application/json", "Accept": "application/json"}
     url_list, _ = get_real_urls()
-    payload = {
-        "settings": {
-            "cursor": {"limit": 100},
-            "filter": {"withPhoto": -1, "hideTrash": False, "nmIDs": [int(x) for x in id_chunk]}
-        }
+    all_found_cards = []
+    
+    # Системные указатели для бесконечной прокрутки базы WB v2
+    has_more = True
+    nm_cursor = {
+        "limit": 100
     }
-    try:
-        res = requests.post(url_list, headers=headers, json=payload, timeout=20)
-        if res.status_code == 200:
-            cards = res.json().get("cards", [])
-            return [c for c in cards if int(c.get("nmID", 0)) in id_chunk]
-        elif res.status_code == 429:
-            time.sleep(15)
-            return fetch_cards_by_ids_pure(id_chunk, token)
-    except:
-        pass
-    return []
+    
+    while has_more:
+        payload = {
+            "settings": {
+                "cursor": nm_cursor,
+                "filter": {"withPhoto": -1, "hideTrash": False}
+            }
+        }
+        try:
+            res = requests.post(url_list, headers=headers, json=payload, timeout=20)
+            if res.status_code == 200:
+                data_json = res.json()
+                cards = data_json.get("cards", [])
+                
+                # Фильтруем пачку на лету: забираем только те, nmID которых есть в списке пользователя
+                for c in cards:
+                    if int(c.get("nmID", 0)) in id_chunk:
+                        all_found_cards.append(c)
+                        
+                # Проверяем, есть ли следующая страница по меткам cursor
+                res_cursor = data_json.get("cursor", {})
+                updated_nm_id = res_cursor.get("nmID", 0)
+                updated_updated_at = res_cursor.get("updatedAt", "")
+                total_returned = res_cursor.get("total", 0)
+                
+                if total_returned < 100 or updated_nm_id == 0:
+                    has_more = False
+                else:
+                    nm_cursor["nmID"] = updated_nm_id
+                    nm_cursor["updatedAt"] = updated_updated_at
+                    time.sleep(0.4) # Безопасная пауза перед пролистыванием страницы
+            elif res.status_code == 429:
+                time.sleep(15)
+                continue
+            else:
+                has_more = False
+        except Exception as e:
+            has_more = False
+            
+    # Убираем дубли, если они проскочили
+    seen_ids = set()
+    final_clean_cards = []
+    for card in all_found_cards:
+        c_id = int(card.get("nmID"))
+        if c_id not in seen_ids:
+            seen_ids.add(c_id)
+            final_clean_cards.append(card)
+            
+    return final_clean_cards
 def send_update_batch(cards_payload, token):
     headers = {"Authorization": token, "Content-Type": "application/json", "Accept": "application/json"}
     _, url_update = get_real_urls()
@@ -143,8 +182,8 @@ new_desc_template = st.text_area(
     height=100
 )
 
-def text_to_wb_list(text_data):
-    return [x.strip() for x in str(text_data).split(",") if x.strip()]
+def text_to_wb_list_by_sep(text_data, separator=","):
+    return [x.strip() for x in str(text_data).split(separator) if x.strip()]
 
 if articules_input and wb_token:
     target_nm_ids = []
@@ -158,7 +197,7 @@ if articules_input and wb_token:
         st.success(f"✅ Введено уникальных артикулов для обработки: {len(target_nm_ids)}")
         
         if st.button("🔍 Шаг 1: Проверить карточки и сопоставить характеристики", type="primary"):
-            with st.spinner("Синхронизация данных с серверами Wildberries..."):
+            with st.spinner("Синхронизация данных с серверами Wildberries (пролистывание страниц)..."):
                 all_fetched_cards = fetch_cards_by_ids_pure(target_nm_ids, wb_token)
                 
                 if all_fetched_cards:
@@ -190,7 +229,7 @@ if articules_input and wb_token:
                         if ch_desc: row_data["Новое Описание"] = "Будет обновлено"
                         if ch_dims: row_data["Размеры упаковки"] = f"{new_length}x{new_width}x{new_height}"
                         if ch_weight: row_data["Вес упаковки (кг)"] = f"{new_weight_val:.3f}"
-                        if ch_tnved: row_data["Код ТН ВЭД / ТНВЭД"] = tnved_val
+                        if ch_tnved: row_data["Код ТН ВЭД"] = tnved_val
                         if ch_complect: row_data["Комплектация"] = complect_val[:40] + "..." if len(complect_val) > 40 else complect_val
                         if ch_material: row_data["Материал изделия"] = material_val
                         if ch_nazn: row_data["Назначение держателя"] = nazn_val[:40] + "..."
@@ -207,7 +246,7 @@ if articules_input and wb_token:
                     st.warning("⚠️ Не найдено карточек. Проверьте правильность токена контента или введённых nmID.")
         if st.session_state.df_preview is not None:
             st.subheader("👀 Таблица предварительного контроля данных")
-            st.markdown("Внимательно проверьте параметры карточки. Всё, что не отмечено галочками, останется БЕЗ изменений. Артикулы, Название, Баркоды, Артикул продавца и Бренд полностью защищены от удаления.")
+            st.markdown(f"Отображено найденных карточек в системе: {len(st.session_state.df_preview)} из {len(target_nm_ids)}")
             st.dataframe(st.session_state.df_preview, use_container_width=True)
             
             st.subheader("🚀 Массовое сохранение изменений")
@@ -252,25 +291,22 @@ if articules_input and wb_token:
                         else:
                             characteristics.append({"name": char_name_str, "value": char_value_list})
                     
-                    # Прямая модификация только выбранных характеристик. Размеры предмета и группа полностью исключены!
+                    # ПРАВИЛЬНОЕ РАСПРЕДЕЛЕНИЕ ТН ВЭД И КОМПЛЕКТАЦИИ ПО СТАНДАРТАМ КАТЕГОРИИ v2
                     if ch_tnved:
+                        # ТН ВЭД передаем СТРОГО списком строк ["код"]
                         set_char_value("Код ТН ВЭД", [str(tnved_val)])
-                        set_char_value("ТНВЭД", [str(tnved_val)])
-                    if ch_complect: set_char_value("Комплектация", text_to_wb_list(complect_val))
-                    if ch_material: set_char_value("Материал изделия", text_to_wb_list(material_val))
-                    
-                    if ch_nazn:
-                        set_char_value("Назначение держателя в авто", text_to_wb_list(nazn_val))
-                        set_char_value("Назначение товара", text_to_wb_list(nazn_val))
                         
-                    if ch_gift: set_char_value("Назначение подарка", text_to_wb_list(gift_val))
-                    if ch_povod: set_char_value("Повод", text_to_wb_list(povod_val))
+                    if ch_complect: 
+                        # Комплектацию делим строго через точку с запятой ';' из Excel шаблона дистрибьютора
+                        set_char_value("Комплектация", text_to_wb_list_by_sep(complect_val, separator=";"))
+                        
+                    if ch_material: set_char_value("Материал изделия", text_to_wb_list_by_sep(material_val, separator=","))
+                    if ch_nazn: set_char_value("Назначение держателя в авто", text_to_wb_list_by_sep(nazn_val, separator=","))
+                    if ch_gift: set_char_value("Назначение подарка", text_to_wb_list_by_sep(gift_val, separator=","))
+                    if ch_povod: set_char_value("Повод", text_to_wb_list_by_sep(povod_val, separator=","))
                     if ch_model: set_char_value("Модель", [str(model_val)])
                     if ch_fragile: set_char_value("Хрупкость", [str(fragile_val)])
-                    
-                    if ch_kreplenie:
-                        set_char_value("Тип крепления", text_to_wb_list(kreplenie_val))
-                        set_char_value("Способ крепления", text_to_wb_list(kreplenie_val))
+                    if ch_kreplenie: set_char_value("Тип крепления", text_to_wb_list_by_sep(kreplenie_val, separator=","))
                     
                     update_payload_batch.append(card)
                     
