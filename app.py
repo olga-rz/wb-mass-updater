@@ -107,45 +107,60 @@ def get_real_urls():
     part_c = b'api.wildberries.ru/content/v2/cards/update'
     return (part_a + part_b).decode('utf-8'), (part_a + part_c).decode('utf-8')
 
-# ИСПРАВЛЕННАЯ ФУНКЦИЯ: Нарезает список nmID любой длины на пачки по 100 и склеивает результаты
+# НАСТОЯЩАЯ ПОЛНАЯ ПОТОКОВАЯ ВЫГРУЗКА: Прокручивает весь кабинет по updatedAt и фильтрует нужные nmIDs
 def fetch_cards_by_ids_pure(id_chunk, token):
     headers = {"Authorization": token, "Content-Type": "application/json", "Accept": "application/json"}
     url_list, _ = get_real_urls()
-    all_found_cards = []
+    all_fetched_cabinet = []
     
-    # Разбиваем список пользователя на пачки ровно по 100 nmID
-    sub_chunks = [id_chunk[i:i + 100] for i in range(0, len(id_chunk), 100)]
+    has_more = True
+    nm_cursor = {"limit": 100} # Базовый лимит одной страницы WB
     
-    for chunk in sub_chunks:
+    while has_more:
         payload = {
             "settings": {
-                "cursor": {"limit": 100},
-                "filter": {"withPhoto": -1, "hideTrash": False, "nmIDs": [int(x) for x in chunk]}
+                "cursor": nm_cursor,
+                "filter": {"withPhoto": -1, "hideTrash": False}
             }
         }
         try:
             res = requests.post(url_list, headers=headers, json=payload, timeout=20)
             if res.status_code == 200:
-                cards = res.json().get("cards", [])
-                all_found_cards.extend(cards)
-                time.sleep(0.4) # Безопасная пауза, чтобы не превысить лимиты WB
+                data_json = res.json()
+                cards = data_json.get("cards", [])
+                all_fetched_cabinet.extend(cards)
+                
+                # Читаем указатели пагинации Wildberries для перехода на следующую страницу
+                res_cursor = data_json.get("cursor", {})
+                next_nm_id = res_cursor.get("nmID", 0)
+                next_updated_at = res_cursor.get("updatedAt", "")
+                total_returned = res_cursor.get("total", 0)
+                
+                # Если сервер вернул меньше 100 или сбросил указатели — значит мы дошли до самого конца кабинета
+                if total_returned < 100 or next_nm_id == 0:
+                    has_more = False
+                else:
+                    nm_cursor["nmID"] = next_nm_id
+                    nm_cursor["updatedAt"] = next_updated_at
+                    time.sleep(0.3) # Легкая техническая пауза
             elif res.status_code == 429:
-                time.sleep(15)
-                # Возвращаем пачку обратно в очередь, если сработал лимит частоты запросов
-                sub_chunks.insert(0, chunk)
+                time.sleep(10)
+                continue
+            else:
+                has_more = False
         except Exception as e:
-            pass
+            has_more = False
             
-    # Полная очистка от возможных дубликатов на выходе
+    # Ювелирный фильтр: Из всего скачанного кабинета вырезаем строго только те артикулы, которые ввел пользователь
+    final_filtered_cards = []
     seen_ids = set()
-    final_clean_cards = []
-    for card in all_found_cards:
+    for card in all_fetched_cabinet:
         c_id = int(card.get("nmID", 0))
-        if c_id and c_id not in seen_ids:
+        if c_id in id_chunk and c_id not in seen_ids:
             seen_ids.add(c_id)
-            final_clean_cards.append(card)
+            final_filtered_cards.append(card)
             
-    return final_clean_cards
+    return final_filtered_cards
 def send_update_batch(cards_payload, token):
     headers = {"Authorization": token, "Content-Type": "application/json", "Accept": "application/json"}
     _, url_update = get_real_urls()
@@ -177,7 +192,7 @@ if articules_input and wb_token:
         st.success(f"✅ Введено уникальных артикулов для обработки: {len(target_nm_ids)}")
         
         if st.button("🔍 Шаг 1: Проверить карточки и сопоставить характеристики", type="primary"):
-            with st.spinner("Синхронизация данных с серверами Wildberries (пакетный точечный поиск)..."):
+            with st.spinner("Синхронизация данных с серверами Wildberries (потоковое сканирование кабинета)..."):
                 all_fetched_cards = fetch_cards_by_ids_pure(target_nm_ids, wb_token)
                 
                 if all_fetched_cards:
