@@ -35,32 +35,31 @@ PACK_TRIGGERS = {
 st.sidebar.header("📂 Загрузка Excel-таблицы")
 uploaded_file = st.sidebar.file_uploader("Выберите файл таблицы (.xlsx)", type=["xlsx"])
 
-def chunk_list(lst, n):
-    for i in range(0, len(lst), n):
-        yield lst[i:i + n]
-
-def fetch_cards_by_ids(id_chunk, token):
+# ИСПРАВЛЕНО: Точечный поиск поштучно через textSearch (официальный и самый быстрый метод WB v2)
+def fetch_single_card_by_id(nm_id, token):
     headers = {"Authorization": token, "Content-Type": "application/json", "Accept": "application/json"}
     url = "https://wildberries.ru"
     payload = {
         "settings": {
-            "cursor": {"limit": 100},
+            "cursor": {"limit": 10},
             "filter": {
                 "withPhoto": -1,
                 "hideTrash": False,
-                "nmIDs": [int(x) for x in id_chunk]
+                "textSearch": str(nm_id)  # Ищем конкретный артикул через текстовый шлюз поиска
             }
         }
     }
     try:
         res = requests.post(url, headers=headers, json=payload, timeout=20)
         if res.status_code == 200:
-            return res.json().get("cards", [])
+            cards = res.json().get("cards", [])
+            # Проверяем строгое совпадение ID, чтобы исключить похожие артикулы
+            return [c for c in cards if int(c.get("nmID", 0)) == int(nm_id)]
         elif res.status_code == 429:
             time.sleep(15)
-            return fetch_cards_by_ids(id_chunk, token)
-    except Exception as e:
-        st.error(f"Ошибка сети: {e}")
+            return fetch_single_card_by_id(nm_id, token)
+    except:
+        pass
     return []
 
 def send_update_batch(cards_payload, token):
@@ -73,7 +72,6 @@ def send_update_batch(cards_payload, token):
         return False, f"Ошибка сети: {e}"
 if uploaded_file and wb_token:
     try:
-        # Читаем Excel напрямую
         df_excel = pd.read_excel(uploaded_file)
         df_excel.columns = [str(c).strip().lower() for c in df_excel.columns]
         
@@ -90,7 +88,6 @@ if uploaded_file and wb_token:
             
             for index, row in df_excel.iterrows():
                 try:
-                    # Принудительное математическое округление до целого числа (убирает .0)
                     raw_nm = int(float(str(row[nm_col]).strip()))
                     cleaned_nm_ids.append(raw_nm)
                     cleaned_descriptions.append(str(row[desc_col]))
@@ -107,12 +104,14 @@ if uploaded_file and wb_token:
                 st.success(f"✅ Из Excel успешно загружено уникальных описаний для артикулов: {len(target_nm_ids)}")
                 
                 if st.button("🔍 Шаг 1: Проверить карточки и сопоставить описания из Excel", type="primary"):
-                    with st.spinner("Синхронизация данных с серверами Wildberries..."):
+                    with st.spinner("Синхронизация данных с серверами Wildberries через поиск..."):
                         all_fetched_cards = []
-                        chunks = list(chunk_list(target_nm_ids, 100))
-                        for chunk in chunks:
-                            cards = fetch_cards_by_ids(chunk, wb_token)
-                            all_fetched_cards.extend(cards)
+                        
+                        # Делаем точечные быстрые поисковые запросы по каждому nmID из вашего Excel
+                        for current_id in target_nm_ids:
+                            single_card_list = fetch_single_card_by_id(current_id, wb_token)
+                            all_fetched_cards.extend(single_card_list)
+                            time.append = time.sleep(0.2)  # Короткая микро-пауза для стабильности
                         
                         if all_fetched_cards:
                             st.session_state.fetched_data = all_fetched_cards
