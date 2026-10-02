@@ -216,7 +216,7 @@ if articules_input and wb_token:
                     st.session_state.df_preview = pd.DataFrame(preview_rows)
                 else:
                     st.warning("⚠️ Не найдено карточек. Проверьте правильность токена контента или введённых nmID.")
-        if st.session_state.df_preview is not None:
+                if st.session_state.df_preview is not None:
             st.subheader("👀 Таблица предварительного контроля данных")
             st.markdown("Внимательно проверьте параметры карточки. Всё, что не отмечено галочками, останется БЕЗ изменений. Артикулы, Название, Баркоды, Артикул продавца и Бренд полностью защищены от удаления.")
             st.dataframe(st.session_state.df_preview, use_container_width=True)
@@ -239,15 +239,21 @@ if articules_input and wb_token:
                     if ch_desc:
                         card["description"] = new_desc_template.format(print_name=print_name)
                     
+                    # Сохраняем или обновляем логистический блок габаритов
+                    if "dimensions" not in card or not card["dimensions"]:
+                        card["dimensions"] = {"length": 18, "width": 14, "height": 1}
+                        
                     if ch_dims:
-                        card["dimensions"] = {
-                            "length": int(new_length),
-                            "width": int(new_width),
-                            "height": int(new_height)
-                        }
+                        card["dimensions"]["length"] = int(new_length)
+                        card["dimensions"]["width"] = int(new_width)
+                        card["dimensions"]["height"] = int(new_height)
                     
+                    # ЖЕСТКАЯ СИНХРОНИЗАЦИЯ: Вес пишется строго на верхний уровень схемы v2
                     if ch_weight:
                         card["weight"] = float(new_weight_val)
+                    elif "weight" not in card:
+                        # Если вес не меняется, но его нет в структуре, ставим заглушку, чтобы не ругался шлюз тарифов
+                        card["weight"] = 0.03
                     
                     if "characteristics" not in card:
                         card["characteristics"] = []
@@ -262,6 +268,7 @@ if articules_input and wb_token:
                         else:
                             characteristics.append({"name": char_name_str, "value": char_value_list})
                     
+                    # Точечно модифицируем текстовые и списочные характеристики по галочкам
                     if ch_tnved:
                         set_char_value("Код ТН ВЭД", [str(tnved_val)])
                         set_char_value("ТНВЭД", [str(tnved_val)])
