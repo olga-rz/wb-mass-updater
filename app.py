@@ -44,7 +44,7 @@ default_val = st.session_state.checkbox_state
 ch_desc = st.sidebar.checkbox("Изменить Описание", value=default_val)
 ch_dims = st.sidebar.checkbox("Изменить Габариты упаковки", value=default_val)
 ch_weight = st.sidebar.checkbox("Изменить Вес с упаковкой (кг)", value=default_val)
-ch_tnved = st.sidebar.checkbox("Изменить Код ТН ВЭД", value=default_val)
+ch_tnved = st.sidebar.checkbox("Изменить Код ТН ВЭД / ТНВЭД", value=default_val)
 ch_complect = st.sidebar.checkbox("Изменить Комплектацию", value=default_val)
 ch_material = st.sidebar.checkbox("Изменить Материал изделия", value=default_val)
 ch_nazn = st.sidebar.checkbox("Изменить Назначение держателя в авто", value=default_val)
@@ -67,7 +67,7 @@ if ch_weight:
 
 tnved_val = ""
 if ch_tnved:
-    tnved_val = st.sidebar.text_input("Код ТН ВЭД (10 цифр)", value="3926909709")
+    tnved_val = st.sidebar.text_input("Код ТН ВЭД / ТНВЭД (10 цифр)", value="3926909709")
 
 complect_val = ""
 if ch_complect:
@@ -107,60 +107,43 @@ def get_real_urls():
     part_c = b'api.wildberries.ru/content/v2/cards/update'
     return (part_a + part_b).decode('utf-8'), (part_a + part_c).decode('utf-8')
 
-# НАСТОЯЩАЯ ПОЛНАЯ ПОТОКОВАЯ ВЫГРУЗКА: Прокручивает весь кабинет по updatedAt и фильтрует нужные nmIDs
+# МГНОВЕННЫЙ ТОЧЕЧНЫЙ ПОИСК: Нарезает введённые артикулы на пачки по 100 и склеивает их за секунды
 def fetch_cards_by_ids_pure(id_chunk, token):
     headers = {"Authorization": token, "Content-Type": "application/json", "Accept": "application/json"}
     url_list, _ = get_real_urls()
-    all_fetched_cabinet = []
+    all_found_cards = []
     
-    has_more = True
-    nm_cursor = {"limit": 100} # Базовый лимит одной страницы WB
+    # Разбиваем список пользователя на подсписки по 100 nmID
+    sub_chunks = [id_chunk[i:i + 100] for i in range(0, len(id_chunk), 100)]
     
-    while has_more:
+    for chunk in sub_chunks:
         payload = {
             "settings": {
-                "cursor": nm_cursor,
-                "filter": {"withPhoto": -1, "hideTrash": False}
+                "cursor": {"limit": 100},
+                "filter": {"withPhoto": -1, "hideTrash": False, "nmIDs": [int(x) for x in chunk]}
             }
         }
         try:
             res = requests.post(url_list, headers=headers, json=payload, timeout=20)
             if res.status_code == 200:
-                data_json = res.json()
-                cards = data_json.get("cards", [])
-                all_fetched_cabinet.extend(cards)
-                
-                # Читаем указатели пагинации Wildberries для перехода на следующую страницу
-                res_cursor = data_json.get("cursor", {})
-                next_nm_id = res_cursor.get("nmID", 0)
-                next_updated_at = res_cursor.get("updatedAt", "")
-                total_returned = res_cursor.get("total", 0)
-                
-                # Если сервер вернул меньше 100 или сбросил указатели — значит мы дошли до самого конца кабинета
-                if total_returned < 100 or next_nm_id == 0:
-                    has_more = False
-                else:
-                    nm_cursor["nmID"] = next_nm_id
-                    nm_cursor["updatedAt"] = next_updated_at
-                    time.sleep(0.3) # Легкая техническая пауза
+                cards = res.json().get("cards", [])
+                all_found_cards.extend(cards)
+                time.sleep(0.3)
             elif res.status_code == 429:
                 time.sleep(10)
-                continue
-            else:
-                has_more = False
+                sub_chunks.insert(0, chunk) # Повторяем пачку
         except Exception as e:
-            has_more = False
+            pass
             
-    # Ювелирный фильтр: Из всего скачанного кабинета вырезаем строго только те артикулы, которые ввел пользователь
-    final_filtered_cards = []
     seen_ids = set()
-    for card in all_fetched_cabinet:
+    final_clean_cards = []
+    for card in all_found_cards:
         c_id = int(card.get("nmID", 0))
-        if c_id in id_chunk and c_id not in seen_ids:
+        if c_id and c_id not in seen_ids:
             seen_ids.add(c_id)
-            final_filtered_cards.append(card)
+            final_clean_cards.append(card)
             
-    return final_filtered_cards
+    return final_clean_cards
 def send_update_batch(cards_payload, token):
     headers = {"Authorization": token, "Content-Type": "application/json", "Accept": "application/json"}
     _, url_update = get_real_urls()
@@ -192,7 +175,7 @@ if articules_input and wb_token:
         st.success(f"✅ Введено уникальных артикулов для обработки: {len(target_nm_ids)}")
         
         if st.button("🔍 Шаг 1: Проверить карточки и сопоставить характеристики", type="primary"):
-            with st.spinner("Синхронизация данных с серверами Wildberries (потоковое сканирование кабинета)..."):
+            with st.spinner("Синхронизация данных с серверами Wildberries (мгновенный точечный поиск)..."):
                 all_fetched_cards = fetch_cards_by_ids_pure(target_nm_ids, wb_token)
                 
                 if all_fetched_cards:
@@ -224,7 +207,7 @@ if articules_input and wb_token:
                         if ch_desc: row_data["Новое Описание"] = "Будет обновлено"
                         if ch_dims: row_data["Размеры упаковки"] = f"{new_length}x{new_width}x{new_height}"
                         if ch_weight: row_data["Вес упаковки (кг)"] = f"{new_weight_val:.3f}"
-                        if ch_tnved: row_data["Код ТН ВЭД"] = tnved_val
+                        if ch_tnved: row_data["Код ТН ВЭД / ТНВЭД"] = tnved_val
                         if ch_complect: row_data["Комплектация"] = complect_val[:40] + "..." if len(complect_val) > 40 else complect_val
                         if ch_material: row_data["Материал изделия"] = material_val
                         if ch_nazn: row_data["Назначение держателя"] = nazn_val[:40] + "..."
@@ -286,8 +269,11 @@ if articules_input and wb_token:
                         else:
                             characteristics.append({"name": char_name_str, "value": char_value_list})
                     
+                    # ВОЗВРАЩЁННЫЙ РАБОЧИЙ ДВОЙНОЙ УДАР ПО ТН ВЭД СТРОГО СПИСКОМ СТРОК ["код"]
                     if ch_tnved:
                         set_char_value("Код ТН ВЭД", [str(tnved_val)])
+                        set_char_value("ТНВЭД", [str(tnved_val)])
+                        
                     if ch_complect: 
                         set_char_value("Комплектация", text_to_wb_list_by_sep(complect_val, separator=";"))
                     if ch_material: set_char_value("Материал изделия", text_to_wb_list_by_sep(material_val, separator=","))
