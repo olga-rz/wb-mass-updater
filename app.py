@@ -29,7 +29,6 @@ articules_input = st.sidebar.text_area("Артикулы nmID (каждый с �
 
 st.sidebar.header("🎯 Выберите поля для изменения:")
 
-# Кнопки быстрого выбора в один клик
 col_btn1, col_btn2 = st.sidebar.columns(2)
 with col_btn1:
     if st.button("✅ Выделить всё", use_container_width=True):
@@ -63,9 +62,9 @@ if ch_dims:
     new_length = st.sidebar.number_input("Длина упаковки (см)", min_value=1, value=18)
     new_width = st.sidebar.number_input("Ширина упаковки (см)", min_value=1, value=14)
     new_height = st.sidebar.number_input("Высота упаковки (см)", min_value=1, value=1)
-new_weight_val = 0.03
+new_weight_val = 0.030
 if ch_weight:
-    new_weight_val = st.sidebar.number_input("Вес упаковки (кг, через точку)", min_value=0.001, value=0.030, step=0.01, format="%.3f")
+    new_weight_val = st.sidebar.number_input("Вес упаковки (кг, через точку)", min_value=0.001, value=0.030, step=0.001, format="%.3f")
 
 tnved_val = ""
 if ch_tnved:
@@ -127,7 +126,6 @@ def fetch_cards_by_ids_pure(id_chunk, token):
         res = requests.post(url_list, headers=headers, json=payload, timeout=20)
         if res.status_code == 200:
             cards = res.json().get("cards", [])
-            # ЖЁСТКИЙ ФИЛЬТР ВОЗВРАЩЕН: Оставляем строго введенные артикулы пользователя
             return [c for c in cards if int(c.get("nmID", 0)) in id_chunk]
         elif res.status_code == 429:
             time.sleep(15)
@@ -222,7 +220,7 @@ if articules_input and wb_token:
             st.markdown("Внимательно проверьте параметры карточки. Всё, что не отмечено галочками, останется БЕЗ изменений. Артикулы, Название, Баркоды, Артикул продавца и Бренд полностью защищены от удаления.")
             st.dataframe(st.session_state.df_preview, use_container_width=True)
             
-            st.subheader("🚀 Массовое сохранение изменений")
+            st.subheader("🚀 Massовое сохранение изменений")
             if st.button("🔥 Шаг 2: Отправить выбранные изменения в Wildberries", type="secondary"):
                 progress_bar = st.progress(0)
                 cards_to_update = st.session_state.fetched_data
@@ -237,6 +235,7 @@ if articules_input and wb_token:
                     match = re.search(r'["«](.*?)["»]', old_desc)
                     print_name = match.group(1).strip() if match else card.get("title", "").replace("Металлическая пластина для телефона", "").strip()
                     
+                    # ПРЯМАЯ ИЗОЛЯЦИЯ: Меняем только то, что включено галочками.
                     if ch_desc:
                         card["description"] = new_desc_template.format(print_name=print_name)
                     
@@ -246,6 +245,10 @@ if articules_input and wb_token:
                             "width": int(new_width),
                             "height": int(new_height)
                         }
+                    
+                    # Вес улетает строго на верхний уровень как число
+                    if ch_weight:
+                        card["weight"] = float(new_weight_val)
                     
                     if "characteristics" not in card:
                         card["characteristics"] = []
@@ -260,15 +263,7 @@ if articules_input and wb_token:
                         else:
                             characteristics.append({"name": char_name_str, "value": char_value_list})
                     
-                    if ch_weight:
-                        set_char_value("Вес с упаковкой (кг)", [float(new_weight_val)])
-                        set_char_value("Вес с упаковкой (кг)", [float(new_weight_val)])
-                        try:
-                            grams_val = int(float(new_weight_val) * 1000)
-                            set_char_value("Вес товара с упаковкой (г)", [grams_val])
-                        except:
-                            pass
-                            
+                    # Массово и точечно перезаписываем списки и строки в числовом формате
                     if ch_tnved:
                         set_char_value("Код ТН ВЭД", [str(tnved_val)])
                         set_char_value("ТНВЭД", [str(tnved_val)])
