@@ -16,7 +16,7 @@ if "df_preview" not in st.session_state:
 
 # Инициализация состояний для кнопок «Выделить всё / Сбросить всё»
 if "checkbox_state" not in st.session_state:
-    st.session_state.checkbox_state = True # По умолчанию описание включено, остальные выключены
+    st.session_state.checkbox_state = False
 
 # ==============================================================================
 # БОКОВАЯ ПАНЕЛЬ: УПРАВЛЕНИЕ ДОСТУПОМ И УМНЫЕ КНОПКИ
@@ -40,7 +40,6 @@ with col_btn2:
         st.session_state.checkbox_state = False
         st.rerun()
 
-# Динамическая привязка состояния галочек к кнопкам управления
 default_val = st.session_state.checkbox_state
 
 ch_desc = st.sidebar.checkbox("Изменить Описание", value=default_val)
@@ -127,7 +126,9 @@ def fetch_cards_by_ids_pure(id_chunk, token):
     try:
         res = requests.post(url_list, headers=headers, json=payload, timeout=20)
         if res.status_code == 200:
-            return res.json().get("cards", [])
+            cards = res.json().get("cards", [])
+            # ЖЁСТКИЙ ФИЛЬТР ВОЗВРАЩЕН: Оставляем строго введенные артикулы пользователя
+            return [c for c in cards if int(c.get("nmID", 0)) in id_chunk]
         elif res.status_code == 429:
             time.sleep(15)
             return fetch_cards_by_ids_pure(id_chunk, token)
