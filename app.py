@@ -14,6 +14,7 @@ if "fetched_data" not in st.session_state:
 if "df_preview" not in st.session_state:
     st.session_state.df_preview = None
 
+# Инициализация состояний для кнопок «Выделить всё / Сбросить всё»
 if "checkbox_state" not in st.session_state:
     st.session_state.checkbox_state = False
 
@@ -44,13 +45,11 @@ ch_desc = st.sidebar.checkbox("Изменить Описание", value=default
 ch_dims = st.sidebar.checkbox("Изменить Габариты упаковки", value=default_val)
 ch_weight = st.sidebar.checkbox("Изменить Вес с упаковкой (кг)", value=default_val)
 ch_tnved = st.sidebar.checkbox("Изменить ТН ВЭД / ТНВЭД", value=default_val)
-ch_group = st.sidebar.checkbox("Изменить Группу (объединение)", value=default_val)
 ch_complect = st.sidebar.checkbox("Изменить Комплектацию", value=default_val)
 ch_material = st.sidebar.checkbox("Изменить Материал изделия", value=default_val)
 ch_nazn = st.sidebar.checkbox("Изменить Назначение держателя в авто", value=default_val)
 ch_gift = st.sidebar.checkbox("Изменить Назначение подарка", value=default_val)
 ch_povod = st.sidebar.checkbox("Изменить Повод", value=default_val)
-ch_item_dims = st.sidebar.checkbox("Изменить Размеры предмета", value=default_val)
 ch_model = st.sidebar.checkbox("Изменить Модель", value=default_val)
 ch_fragile = st.sidebar.checkbox("Изменить Хрупкость", value=default_val)
 ch_kreplenie = st.sidebar.checkbox("Изменить Тип крепления", value=default_val)
@@ -69,10 +68,6 @@ if ch_weight:
 tnved_val = ""
 if ch_tnved:
     tnved_val = st.sidebar.text_input("Код ТН ВЭД / ТНВЭД (10 цифр)", value="3926909709")
-
-group_val = ""
-if ch_group:
-    group_val = st.sidebar.text_input("Группа (для объединения карточек)", value="1")
 
 complect_val = ""
 if ch_complect:
@@ -93,11 +88,6 @@ if ch_gift:
 povod_val = ""
 if ch_povod:
     povod_val = st.sidebar.text_input("Повод (через запятую)", value="новый год, день рождения, 23 февраля")
-
-item_height_val, item_width_val = 6, 4
-if ch_item_dims:
-    item_height_val = st.sidebar.number_input("Высота предмета (см)", min_value=1, value=6)
-    item_width_val = st.sidebar.number_input("Ширина предмета (см)", min_value=1, value=4)
 
 model_val = ""
 if ch_model:
@@ -201,13 +191,11 @@ if articules_input and wb_token:
                         if ch_dims: row_data["Размеры упаковки"] = f"{new_length}x{new_width}x{new_height}"
                         if ch_weight: row_data["Вес упаковки (кг)"] = f"{new_weight_val:.3f}"
                         if ch_tnved: row_data["Код ТН ВЭД / ТНВЭД"] = tnved_val
-                        if ch_group: row_data["Группа"] = group_val
-                        if ch_complect: row_data["Комплектация"] = complect_val[:40] + "..."
+                        if ch_complect: row_data["Комплектация"] = complect_val[:40] + "..." if len(complect_val) > 40 else complect_val
                         if ch_material: row_data["Материал изделия"] = material_val
                         if ch_nazn: row_data["Назначение держателя"] = nazn_val[:40] + "..."
                         if ch_gift: row_data["Назначение подарка"] = gift_val
                         if ch_povod: row_data["Повод"] = povod_val
-                        if ch_item_dims: row_data["Размеры предмета"] = f"В:{item_height_val} x Ш:{item_width_val}"
                         if ch_model: row_data["Модель"] = model_val
                         if ch_fragile: row_data["Хрупкость"] = fragile_val
                         if ch_kreplenie: row_data["Тип крепления"] = kreplenie_val
@@ -219,6 +207,7 @@ if articules_input and wb_token:
                     st.warning("⚠️ Не найдено карточек. Проверьте правильность токена контента или введённых nmID.")
         if st.session_state.df_preview is not None:
             st.subheader("👀 Таблица предварительного контроля данных")
+            st.markdown("Внимательно проверьте параметры карточки. Всё, что не отмечено галочками, останется БЕЗ изменений. Артикулы, Название, Баркоды, Артикул продавца и Бренд полностью защищены от удаления.")
             st.dataframe(st.session_state.df_preview, use_container_width=True)
             
             st.subheader("🚀 Массовое сохранение изменений")
@@ -263,7 +252,7 @@ if articules_input and wb_token:
                         else:
                             characteristics.append({"name": char_name_str, "value": char_value_list})
                     
-                    # ПРЯМАЯ ИСПРАВЛЕННАЯ НАСТРОЙКА ХАРАКТЕРИСТИК ДЛЯ ВЕРСИИ v2
+                    # Прямая модификация только выбранных характеристик. Размеры предмета и группа полностью исключены!
                     if ch_tnved:
                         set_char_value("Код ТН ВЭД", [str(tnved_val)])
                         set_char_value("ТНВЭД", [str(tnved_val)])
@@ -271,30 +260,17 @@ if articules_input and wb_token:
                     if ch_material: set_char_value("Материал изделия", text_to_wb_list(material_val))
                     
                     if ch_nazn:
-                        # Назначение передаем строго списком разделенных тегов
                         set_char_value("Назначение держателя в авто", text_to_wb_list(nazn_val))
                         set_char_value("Назначение товара", text_to_wb_list(nazn_val))
                         
                     if ch_gift: set_char_value("Назначение подарка", text_to_wb_list(gift_val))
                     if ch_povod: set_char_value("Повод", text_to_wb_list(povod_val))
-                    
-                    if ch_item_dims:
-                        # Числа передаем строго как ЧИСЛА (целые), дублируя в оба системных имени колонки
-                        set_char_value("Высота предмета (см)", [int(item_height_val)])
-                        set_char_value("Ширина предмета (см)", [int(item_width_val)])
-                        set_char_value("Высота предмета", [int(item_height_val)])
-                        set_char_value("Ширина предмета", [int(item_width_val)])
-                        
                     if ch_model: set_char_value("Модель", [str(model_val)])
                     if ch_fragile: set_char_value("Хрупкость", [str(fragile_val)])
                     
                     if ch_kreplenie:
-                        # Тип крепления передаем строго списком тегов
                         set_char_value("Тип крепления", text_to_wb_list(kreplenie_val))
                         set_char_value("Способ крепления", text_to_wb_list(kreplenie_val))
-                    
-                    if ch_group:
-                        card["targetUrl"] = str(group_val)
                     
                     update_payload_batch.append(card)
                     
