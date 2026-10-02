@@ -4,34 +4,74 @@ import requests
 import re
 import time
 
-st.set_page_config(page_title="WB Smart Box Updater", layout="wide", page_icon="📦")
+st.set_page_config(page_title="WB Armor Box Updater", layout="wide", page_icon="🛡️")
 
-st.title("📦 Умное обновление карточек Wildberries v2")
-st.caption("Массовая автозамена описаний через текстовое поле с сохранением принтов в кавычках и защитой брендов")
+st.title("🛡️ Защищённый комбайн карточек Wildberries v2")
+st.caption("Точечное изменение характеристик по галочкам с абсолютной защитой от удаления Названий и Брендов")
 
 if "fetched_data" not in st.session_state:
     st.session_state.fetched_data = None
 if "df_preview" not in st.session_state:
     st.session_state.df_preview = None
 
-st.sidebar.header("🔑 Настройки подключения")
-wb_token = st.sidebar.text_input("API Токен (категорияindex Контент)", type="password", help="Вставьте ваш токен контента Wildberries")
+# ==============================================================================
+# БОКОВАЯ ПАНЕЛЬ: ВЫБОР ТОГО, ЧТО МЫ ХОТИМ ИЗМЕНИТЬ
+# ==============================================================================
+st.sidebar.header("🔑 Доступ")
+wb_token = st.sidebar.text_input("API Токен (Контент)", type="password")
 
-st.sidebar.header("📐 Габариты упаковки (см)")
-new_length = st.sidebar.number_input("Длина упаковки", min_value=1, value=15)
-new_width = st.sidebar.number_input("Ширина упаковки", min_value=1, value=11)
-new_height = st.sidebar.number_input("Высота упаковки", min_value=1, value=1)
+st.sidebar.header("🔢 Товар")
+articules_input = st.sidebar.text_area("Артикулы nmID (каждый с новой строки)", height=80, placeholder="916295595")
 
-PACK_TRIGGERS = {
-    "длина упаковки": str(new_length),
-    "ширина упаковки": str(new_width),
-    "высота упаковки": str(new_height),
-    "глубина упаковки": str(new_length)
-}
+st.sidebar.header("🎯 Выберите поля для изменения:")
+# Галочки строго определяют, какие поля будут отправлены в WB
+ch_desc = st.sidebar.checkbox("Изменить Описание", value=True)
+ch_dims = st.sidebar.checkbox("Изменить Габариты упаковки", value=False)
+ch_weight = st.sidebar.checkbox("Изменить Вес с упаковкой", value=False)
+ch_tnved = st.sidebar.checkbox("Изменить ТН ВЭД", value=False)
+ch_complect = st.sidebar.checkbox("Изменить Комплектацию", value=False)
+ch_material = st.sidebar.checkbox("Изменить Материал изделия", value=False)
+ch_nazn = st.sidebar.checkbox("Изменить Назначение держателя", value=False)
+ch_gift = st.sidebar.checkbox("Изменить Назначение подарка", value=False)
+ch_povod = st.sidebar.checkbox("Изменить Повод", value=False)
 
-st.sidebar.header("🔢 Ввод артикулов")
-articules_input = st.sidebar.text_area("Вставьте список nmID (каждый артикул с новой строки)", height=150, placeholder="916295595")
+st.sidebar.header("📝 Новые значения:")
 
+# Сбор данных с полей ввода на боковой панели
+new_length, new_width, new_height = 18, 14, 1
+if ch_dims:
+    new_length = st.sidebar.number_input("Длина упаковки (см)", min_value=1, value=18)
+    new_width = st.sidebar.number_input("Ширина упаковки (см)", min_value=1, value=14)
+    new_height = st.sidebar.number_input("Высота упаковки (см)", min_value=1, value=1)
+
+new_weight_val = "0.03"
+if ch_weight:
+    new_weight_val = st.sidebar.text_input("Вес упаковки (кг, через точку)", value="0.03")
+
+tnved_val = ""
+if ch_tnved:
+    tnved_val = st.sidebar.text_input("Код ТН ВЭД (10 цифр)", value="3926909709")
+
+complect_val = ""
+if ch_complect:
+    complect_val = st.sidebar.text_area("Комплектация (через запятую)", value="Металлическая пластина - 1 шт, Двухсторонний скотч - 1 шт")
+material_val = ""
+if ch_material:
+    material_val = st.sidebar.text_input("Материал изделия (через запятую)", value="металл")
+
+nazn_val = ""
+if ch_nazn:
+    nazn_val = st.sidebar.text_input("Назначение держателя в авто", value="смартфоны, для навигатора")
+
+gift_val = ""
+if ch_gift:
+    gift_val = st.sidebar.text_input("Назначение подарка (через запятую)", value="любимому, любимой, другу, подруге")
+
+povod_val = ""
+if ch_povod:
+    povod_val = st.sidebar.text_input("Повод (через запятую)", value="новый год, день рождения, 23 февраля")
+
+# Защищенные системные ссылки API
 def get_real_urls():
     part_a = b'https://content-'
     part_b = b'api.wildberries.ru/content/v2/get/cards/list'
@@ -44,18 +84,13 @@ def fetch_cards_by_ids_pure(id_chunk, token):
     payload = {
         "settings": {
             "cursor": {"limit": 100},
-            "filter": {
-                "withPhoto": -1,
-                "hideTrash": False,
-                "nmIDs": [int(x) for x in id_chunk]
-            }
+            "filter": {"withPhoto": -1, "hideTrash": False, "nmIDs": [int(x) for x in id_chunk]}
         }
     }
     try:
         res = requests.post(url_list, headers=headers, json=payload, timeout=20)
         if res.status_code == 200:
             cards = res.json().get("cards", [])
-            # ИСПРАВЛЕНО: Жёстко фильтруем ответ WB, оставляя только те артикулы, которые запросил пользователь
             return [c for c in cards if int(c.get("nmID", 0)) in id_chunk]
         elif res.status_code == 429:
             time.sleep(15)
@@ -72,32 +107,21 @@ def send_update_batch(cards_payload, token):
         return res.status_code == 200, f"Код {res.status_code}: {res.text[:150]}"
     except Exception as e:
         return False, f"Ошибка сети: {e}"
-# Поле для редактирования общего шаблона описания прямо на экране
-st.header("📝 Шаблон общего нового описания")
+
+# Раздел «Замена стикеров» (Шаблон описания выведен на экран)
+st.header("📝 Раздел: Замена описаний (Стикеры)")
 new_desc_template = st.text_area(
-    "Вы можете отредактировать этот текст прямо здесь. Переменная {print_name} автоматически заменится на имя принта из кавычек текущей карточки.",
+    "Вы можете отредактировать этот текст. Переменная {print_name} автоматически заменится на имя принта из кавычек текущей карточки.",
     value="""Металлическая пластина для телефона "{print_name}" — незаменимый аксессуар для каждого водителя, обеспечивающий надежную фиксацию и стильный вид вашего гаджета.
 Наша пластина для магнитного держателя телефона создана для тех, кто ищет бескомпромиссную надежность. Этот красивый магнит на телефон гарантирует, что ваш смартфон останется на месте даже при резком торможении. Мощная металлическая пластина для телефона превращает обычный держатель для телефона в машину в идеальную систему крепления.
 
-Обратите внимание: Данный аксессуар — это именно металлическая пластина, которая притягивается к магниту. Сама наклейка не является магнитом, поэтому она полностью безопасна для вашего смартфона и не влияет на работу его внутренних модулей.
-
-Почему выбирают наши магнитные наклейки на телефон?
-• Железная фиксация: Качественный магнит в машину требует прямого контакта. Наша магнит пластина для телефона выполнена из металла, что дает в разы больше силы притяжения, чем стандартные наклейки на телефон.
-• Стильный дизайн: Если вы искали магнит на телефон для держателя в машину с приколом или лаконичный принт — это современный выбор. Наши магнитные стикеры для телефона выглядят гораздо эстетественнее, чем обычные наклейки или пустые железки.
-• Универсальные аксессуары в авто: Эти магниты для чехла телефона подходят для любых смартфонов: iPhone (Айфон), Samsung, Xiaomi и других. Пластина идеально дополняет любой автомобильный держатель или автодержатель.
-
-Простота и надежность:
-Наклейка на чехол (стикер) не оставляет следов после снятия и не портит поверхность.
-
-Кому подойдет?
-Это отличный подарок мужу, парню, другу или коллеге на любой праздник. Стильная пластина также может использоваться как декоративный элемент на ноутбук или планшет.
-
-Важно по установке:
-Чтобы ваш автомобильный аксессуар держал максимально крепко, приклейте его на внешнюю сторону чехла. Перед установкой обязательно OpenCV обезжирьте поверхность.""",
-    height=250
+Обратите внимание: Данный аксессуар — это именно металлическая пластина, которая притягивается к магниту. Сама наклейка не является магнитом, поэтому она полностью безопасна для вашего смартфона и не влияет на работу его внутренних модулей.""",
+    height=200
 )
+# Функция для превращения строки с запятыми в правильный список WB
+def text_to_wb_list(text_data):
+    return [x.strip() for x in str(text_data).split(",") if x.strip()]
 
-# Разбор введенных артикулов
 if articules_input and wb_token:
     target_nm_ids = []
     for line in articules_input.splitlines():
@@ -109,8 +133,8 @@ if articules_input and wb_token:
     if target_nm_ids:
         st.success(f"✅ Введено уникальных артикулов для обработки: {len(target_nm_ids)}")
         
-        # КНОПКА ШАГ 1
-        if st.button("🔍 Шаг 1: Проверить карточки и сопоставить описания", type="primary"):
+        # КНОПКА ШАГ 1: БЕЗОПАСНАЯ ВЫГРУЗКА
+        if st.button("🔍 Шаг 1: Проверить карточки и сопоставить характеристики", type="primary"):
             with st.spinner("Синхронизация данных с серверами Wildberries..."):
                 all_fetched_cards = fetch_cards_by_ids_pure(target_nm_ids, wb_token)
                 
@@ -120,41 +144,38 @@ if articules_input and wb_token:
                     
                     for card in all_fetched_cards:
                         nm_id = int(card.get("nmID"))
-                        vendor_code = card.get("vendorCode", "")
-                        title = card.get("title", "—")
-                        brand = card.get("brand", "—")
                         old_desc = card.get("description", "")
                         
                         match = re.search(r'["«](.*?)["»]', old_desc)
                         print_name = match.group(1).strip() if match else card.get("title", "").replace("Металлическая пластина для телефона", "").strip()
                         
-                        final_desc_preview = new_desc_template.format(print_name=print_name)
+                        # Собираем текущие габариты
                         dimensions_old = card.get("dimensions", {})
                         old_dims_str = f"{dimensions_old.get('length', '—')}x{dimensions_old.get('width', '—')}x{dimensions_old.get('height', '—')}"
                         
+                        # Безопасный показ текущего Названия и Бренда
                         preview_rows.append({
                             "Артикул nmID": nm_id,
-                            "Артикул продавца": vendor_code,
-                            "Текущее Название (БЕЗОПАСНО)": title,
-                            "Текущий Бренд (БЕЗОПАСНО)": brand,
+                            "Артикул продавца": card.get("vendorCode", ""),
+                            "Название (ЗАЩИЩЕНО)": card.get("title", "—"),
+                            "Бренд (ЗАЩИЩЕНО)": card.get("brand", "—"),
                             "Вытащенный принт": print_name,
-                            "Новое описание для отправки": final_desc_preview[:120] + "...",
-                            "Размеры упаковки": f"{new_length}x{new_width}x{new_height}"
+                            "Размеры упаковки": f"{new_length}x{new_width}x{new_height}" if ch_dims else old_dims_str,
+                            "Вес упаковки (кг)": new_weight_val if ch_weight else "Не меняется"
                         })
                     st.session_state.df_preview = pd.DataFrame(preview_rows)
                 else:
                     st.warning("⚠️ Не найдено карточек. Проверьте правильность токена контента или введённых nmID.")
         
-        # Вывод интерактивного окна предпросмотра
+        # Вывод таблицы предварительного контроля
         if st.session_state.df_preview is not None:
             st.subheader("👀 Таблица предварительного контроля данных")
-            st.markdown("Внимательно проверьте данные. В таблице ниже отображаются только те артикулы, которые вы ввели вручную.")
+            st.markdown("Внимательно проверьте параметры карточки. Всё, что не отмечено галочками, останется без изменений.")
             st.dataframe(st.session_state.df_preview, use_container_width=True)
             
             st.subheader("🚀 Массовое сохранение изменений")
-            if st.button("🔥 Шаг 2: Отправить общее описание и габариты в Wildberries", type="secondary"):
+            if st.button("🔥 Шаг 2: Отправить выбранные изменения в Wildberries", type="secondary"):
                 progress_bar = st.progress(0)
-                status_text = st.empty()
                 cards_to_update = st.session_state.fetched_data
                 total_cards = len(cards_to_update)
                 update_payload_batch = []
@@ -167,28 +188,56 @@ if articules_input and wb_token:
                     match = re.search(r'["«](.*?)["»]', old_desc)
                     print_name = match.group(1).strip() if match else card.get("title", "").replace("Металлическая пластина для телефона", "").strip()
                     
-                    final_description = new_desc_template.format(print_name=print_name)
+                    # 1. ОБНОВЛЕНИЕ ОПИСАНИЯ ПО ГАЛОЧКЕ
+                    final_description = card.get("description", "")
+                    if ch_desc:
+                        final_description = new_desc_template.format(print_name=print_name)
                     
-                    if len(final_description) > 5000:
-                        st.warning(f"⚠️ Артикул {nm_id}: Текст превышает 5000 символов. Пропущен.")
-                        continue
+                    # 2. ОБНОВЛЕНИЕ ГАБАРИТОВ ПО ГАЛОЧКЕ
+                    final_dimensions = card.get("dimensions", {"length": 18, "width": 14, "height": 1})
+                    if ch_dims:
+                        final_dimensions = {
+                            "length": int(new_length),
+                            "width": int(new_width),
+                            "height": int(new_height)
+                        }
                     
+                    # 3. ТОЧЕЧНАЯ МОДИФИКАЦИЯ ХАРАКТЕРИСТИК (МАССИВ CHARACTERISTICS)
                     characteristics = card.get("characteristics", [])
-                    for char in characteristics:
-                        char_name = str(char.get("name", "")).lower()
-                        for trigger_word, new_val in PACK_TRIGGERS.items():
-                            if trigger_word == char_name:
-                                char["value"] = [str(new_val)]
                     
+                    # Сбор текущих служебных полей характеристик для железной защиты от удаления
+                    existing_chars = {str(c.get("name")).lower(): c for c in characteristics}
+                    
+                    # Функция для безопасной перезаписи или добавления поля
+                    def set_char_value(char_name_str, char_value_list):
+                        name_lower = char_name_str.lower()
+                        if name_lower in existing_chars:
+                            existing_chars[name_lower]["value"] = char_value_list
+                        else:
+                            characteristics.append({"name": char_name_str, "value": char_value_list})
+                    
+                    # Перезаписываем только то, что выбрано пользователем (по галочкам)
+                    if ch_weight:
+                        set_char_value("Вес с упаковкой (кг)", [str(new_weight_val)])
+                    if ch_tnved:
+                        set_char_value("Код ТН ВЭД", [str(tnved_val)])
+                    if ch_complect:
+                        set_char_value("Комплектация", text_to_wb_list(complect_val))
+                    if ch_material:
+                        set_char_value("Материал изделия", text_to_wb_list(material_val))
+                    if ch_nazn:
+                        set_char_value("Назначение держателя в авто", text_to_wb_list(nazn_val))
+                    if ch_gift:
+                        set_char_value("Назначение подарка", text_to_wb_list(gift_val))
+                    if ch_povod:
+                        set_char_value("Повод", text_to_wb_list(povod_val))
+                    
+                    # Формируем финальную карточку
                     clean_card = {
                         "nmID": nm_id,
                         "vendorCode": card.get("vendorCode"),
                         "description": final_description,
-                        "dimensions": {
-                            "length": int(new_length),
-                            "width": int(new_width),
-                            "height": int(new_height)
-                        },
+                        "dimensions": final_dimensions,
                         "characteristics": characteristics,
                         "sizes": card.get("sizes", [])
                     }
@@ -198,20 +247,18 @@ if articules_input and wb_token:
                     update_payload_batch.append(clean_card)
                     
                     if len(update_payload_batch) == 100 or index == total_cards:
-                        status_text.text(f"Синхронизация пачки изменений ({index}/{total_cards})...")
                         success, msg = send_update_batch(update_payload_batch, wb_token)
                         if success:
                             success_count += len(update_payload_batch)
                         else:
-                            st.error(f"Ошибка WB: {msg}")
+                            st.error(f"Ошибка WB при сохранении: {msg}")
                         update_payload_batch = []
                         if index < total_cards:
                             time.sleep(8)
                     progress_bar.progress(index / total_cards)
                 
-                status_text.empty()
-                st.success(f"🎉 Процесс полностью завершен! Успешно и безопасно обновлено карточек: {success_count} из {total_cards}")
+                st.success(f"🎉 Процесс завершен! Успешно изменено карточек: {success_count} из {total_cards}")
                 st.session_state.fetched_data = None
                 st.session_state.df_preview = None
 else:
-    st.info("💡 Укажите API-токен контента слева на боковой панели, вставьте список артикулов nmID (каждый с новой строки) и проверьте шаблон описания.")
+    st.info("💡 Настройте токен контента и артикулы на левой панели. Отметьте нужные галочки для точечного изменения.")
