@@ -14,8 +14,12 @@ if "fetched_data" not in st.session_state:
 if "df_preview" not in st.session_state:
     st.session_state.df_preview = None
 
+# Инициализация состояний для кнопок «Выделить всё / Сбросить всё»
+if "checkbox_state" not in st.session_state:
+    st.session_state.checkbox_state = True # По умолчанию описание включено, остальные выключены
+
 # ==============================================================================
-# БОКОВАЯ ПАНЕЛЬ: СИСТЕМА УПРАВЛЕНИЯ ГАЛОЧКАМИ
+# БОКОВАЯ ПАНЕЛЬ: УПРАВЛЕНИЕ ДОСТУПОМ И УМНЫЕ КНОПКИ
 # ==============================================================================
 st.sidebar.header("🔑 Доступ")
 wb_token = st.sidebar.text_input("API Токен (Контент)", type="password")
@@ -24,19 +28,34 @@ st.sidebar.header("🔢 Товар")
 articules_input = st.sidebar.text_area("Артикулы nmID (каждый с новой строки)", height=80, placeholder="916295595")
 
 st.sidebar.header("🎯 Выберите поля для изменения:")
-ch_desc = st.sidebar.checkbox("Изменить Описание", value=True)
-ch_dims = st.sidebar.checkbox("Изменить Габариты упаковки", value=False)
-ch_weight = st.sidebar.checkbox("Изменить Вес с упаковкой (кг)", value=False)
-ch_tnved = st.sidebar.checkbox("Изменить ТН ВЭД / ТНВЭД", value=False)
-ch_group = st.sidebar.checkbox("Изменить Группу (объединение)", value=False)
-ch_complect = st.sidebar.checkbox("Изменить Комплектацию", value=False)
-ch_material = st.sidebar.checkbox("Изменить Материал изделия", value=False)
-ch_nazn = st.sidebar.checkbox("Изменить Назначение товара", value=False) # ИСПРАВЛЕНО НАЗВАНИЕ ПО СФЕРЕ WB
-ch_gift = st.sidebar.checkbox("Изменить Назначение подарка", value=False)
-ch_povod = st.sidebar.checkbox("Изменить Повод", value=False)
-ch_item_dims = st.sidebar.checkbox("Изменить Размеры предмета", value=False)
-ch_model = st.sidebar.checkbox("Изменить Модель", value=False)
-ch_fragile = st.sidebar.checkbox("Изменить Хрупкость", value=False)
+
+# Кнопки быстрого выбора в один клик
+col_btn1, col_btn2 = st.sidebar.columns(2)
+with col_btn1:
+    if st.button("✅ Выделить всё", use_container_width=True):
+        st.session_state.checkbox_state = True
+        st.rerun()
+with col_btn2:
+    if st.button("❌ Сбросить всё", use_container_width=True):
+        st.session_state.checkbox_state = False
+        st.rerun()
+
+# Динамическая привязка состояния галочек к кнопкам управления
+default_val = st.session_state.checkbox_state
+
+ch_desc = st.sidebar.checkbox("Изменить Описание", value=default_val)
+ch_dims = st.sidebar.checkbox("Изменить Габариты упаковки", value=default_val)
+ch_weight = st.sidebar.checkbox("Изменить Вес с упаковкой (кг)", value=default_val)
+ch_tnved = st.sidebar.checkbox("Изменить ТН ВЭД / ТНВЭД", value=default_val)
+ch_group = st.sidebar.checkbox("Изменить Группу (объединение)", value=default_val)
+ch_complect = st.sidebar.checkbox("Изменить Комплектацию", value=default_val)
+ch_material = st.sidebar.checkbox("Изменить Материал изделия", value=default_val)
+ch_nazn = st.sidebar.checkbox("Изменить Назначение товара", value=default_val)
+ch_gift = st.sidebar.checkbox("Изменить Назначение подарка", value=default_val)
+ch_povod = st.sidebar.checkbox("Изменить Повод", value=default_val)
+ch_item_dims = st.sidebar.checkbox("Изменить Размеры предмета", value=default_val)
+ch_model = st.sidebar.checkbox("Изменить Модель", value=default_val)
+ch_fragile = st.sidebar.checkbox("Изменить Хрупкость", value=default_val)
 
 st.sidebar.header("📝 Новые значения:")
 
@@ -45,6 +64,76 @@ if ch_dims:
     new_length = st.sidebar.number_input("Длина упаковки (см)", min_value=1, value=18)
     new_width = st.sidebar.number_input("Ширина упаковки (см)", min_value=1, value=14)
     new_height = st.sidebar.number_input("Высота упаковки (см)", min_value=1, value=1)
+new_weight_val = 0.03
+if ch_weight:
+    new_weight_val = st.sidebar.number_input("Вес упаковки (кг, через точку)", min_value=0.001, value=0.030, step=0.01, format="%.3f")
+
+tnved_val = ""
+if ch_tnved:
+    tnved_val = st.sidebar.text_input("Код ТН ВЭД / ТНВЭД (10 цифр)", value="3926909709")
+
+group_val = ""
+if ch_group:
+    group_val = st.sidebar.text_input("Группа (для объединения карточек)", value="1")
+
+complect_val = ""
+if ch_complect:
+    complect_val = st.sidebar.text_area("Комплектация (через запятую)", value="Металлическая пластина - 1 шт, Двухсторонний скотч - 1 шт")
+
+material_val = ""
+if ch_material:
+    material_val = st.sidebar.text_input("Материал изделия (через запятую)", value="металл")
+
+nazn_val = ""
+if ch_nazn:
+    nazn_val = st.sidebar.text_input("Назначение товара (через запятую)", value="смартфоны и мобильные телефоны, навигаторы, планшеты")
+
+gift_val = ""
+if ch_gift:
+    gift_val = st.sidebar.text_input("Назначение подарка (через запятую)", value="любимому, любимой, другу, подруге")
+
+povod_val = ""
+if ch_povod:
+    povod_val = st.sidebar.text_input("Повод (через запятую)", value="новый год, день рождения, 23 февраля")
+
+item_height_val, item_width_val = 6, 4
+if ch_item_dims:
+    item_height_val = st.sidebar.number_input("Высота предмета (см)", min_value=1, value=6)
+    item_width_val = st.sidebar.number_input("Ширина предмета (см)", min_value=1, value=4)
+
+model_val = ""
+if ch_model:
+    model_val = st.sidebar.text_input("Модель", value="металлическая пластина на телефон")
+
+fragile_val = ""
+if ch_fragile:
+    fragile_val = st.sidebar.text_input("Хрупкость", value="не хрупкое")
+
+def get_real_urls():
+    part_a = b'https://content-'
+    part_b = b'api.wildberries.ru/content/v2/get/cards/list'
+    part_c = b'api.wildberries.ru/content/v2/cards/update'
+    return (part_a + part_b).decode('utf-8'), (part_a + part_c).decode('utf-8')
+
+def fetch_cards_by_ids_pure(id_chunk, token):
+    headers = {"Authorization": token, "Content-Type": "application/json", "Accept": "application/json"}
+    url_list, _ = get_real_urls()
+    payload = {
+        "settings": {
+            "cursor": {"limit": 100},
+            "filter": {"withPhoto": -1, "hideTrash": False, "nmIDs": [int(x) for x in id_chunk]}
+        }
+    }
+    try:
+        res = requests.post(url_list, headers=headers, json=payload, timeout=20)
+        if res.status_code == 200:
+            return res.json().get("cards", [])
+        elif res.status_code == 429:
+            time.sleep(15)
+            return fetch_cards_by_ids_pure(id_chunk, token)
+    except:
+        pass
+    return []
 def send_update_batch(cards_payload, token):
     headers = {"Authorization": token, "Content-Type": "application/json", "Accept": "application/json"}
     _, url_update = get_real_urls()
@@ -170,13 +259,10 @@ if articules_input and wb_token:
                         else:
                             characteristics.append({"name": char_name_str, "value": char_value_list})
                     
-                    # ПРЯМАЯ ПЕРЕДАЧА ЧИСЕЛ БЕЗ ТЕКСТОВЫХ КАВЫЧЕК ДЛЯ ВЕСА И РАЗМЕРОВ ТОВАРА
                     if ch_weight:
-                        # Вес передаем как число с плавающей точкой
                         set_char_value("Вес с упаковкой (кг)", [float(new_weight_val)])
                         set_char_value("Вес с упаковкой (кг)", [float(new_weight_val)])
                         try:
-                            # Перевод в граммы как целое число (если требует старая схема WB)
                             grams_val = int(float(new_weight_val) * 1000)
                             set_char_value("Вес товара с упаковкой (г)", [grams_val])
                         except:
@@ -191,7 +277,6 @@ if articules_input and wb_token:
                     if ch_gift: set_char_value("Назначение подарка", text_to_wb_list(gift_val))
                     if ch_povod: set_char_value("Повод", text_to_wb_list(povod_val))
                     
-                    # Размеры предмета передаем строго как числа
                     if ch_item_dims:
                         set_char_value("Высота предмета (см)", [int(item_height_val)])
                         set_char_value("Ширина предмета (см)", [int(item_width_val)])
