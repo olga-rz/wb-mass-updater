@@ -111,93 +111,6 @@ def fetch_cards_by_ids_pure(id_chunk, token):
     except:
         pass
     return []
-def send_update_batch(cards_payload, token):
-    headers = {"Authorization": token, "Content-Type": "application/json", "Accept": "application/json"}
-    _, url_update = get_real_urls()
-    try:
-        res = requests.post(url_update, headers=headers, json=cards_payload, timeout=20)
-        return res.status_code == 200, f"Код {res.status_code}: {res.text[:150]}"
-    except Exception as e:
-        return False, f"Ошибка сети: {e}"
-
-st.header("📝 Раздел: Замена описаний (Стикеры)")
-new_desc_template = st.text_area(
-    "Вы можете отредактировать этот текст. Переменная {print_name} автоматически заменится на имя принта из кавычек текущей карточки.",
-    value="""Металлическая пластина для телефона "{print_name}" — незаменимый аксессуар для каждого водителя, обеспечивающий надежную фиксацию и стильный вид вашего гаджета.""",
-    height=100
-)
-
-# Функция для превращения строки с запятыми в правильный список WB
-def text_to_wb_list(text_data):
-    return [x.strip() for x in str(text_data).split(",") if x.strip()]
-
-if articules_input and wb_token:
-    target_nm_ids = []
-    for line in articules_input.splitlines():
-        line_clean = line.strip()
-        if line_clean and line_clean.isdigit():
-            target_nm_ids.append(int(line_clean))
-    target_nm_ids = list(set(target_nm_ids))
-    
-    if target_nm_ids:
-        st.success(f"✅ Введено уникальных артикулов для обработки: {len(target_nm_ids)}")
-        
-        # КНОПКА ШАГ 1: БЕЗОПАСНАЯ ВЫГРУЗКА И ВЫВОД ВСЕХ ВЫБРАННЫХ ХАРАКТЕРИСТИК
-        if st.button("🔍 Шаг 1: Проверить карточки и сопоставить характеристики", type="primary"):
-            with st.spinner("Синхронизация данных с серверами Wildberries..."):
-                all_fetched_cards = fetch_cards_by_ids_pure(target_nm_ids, wb_token)
-                
-                if all_fetched_cards:
-                    st.session_state.fetched_data = all_fetched_cards
-                    preview_rows = []
-                    
-                    for card in all_fetched_cards:
-                        nm_id = int(card.get("nmID"))
-                        old_desc = card.get("description", "")
-                        
-                        match = re.search(r'["«](.*?)["»]', old_desc)
-                        print_name = match.group(1).strip() if match else card.get("title", "").replace("Металлическая пластина для телефона", "").strip()
-                        
-                        # Собираем текущие баркоды для контроля защиты
-                        sizes_list = card.get("sizes", [])
-                        barcodes_found = []
-                        for sz in sizes_list:
-                            barcodes_found.extend(sz.get("skus", []))
-                        barcodes_str = ", ".join(barcodes_found) if barcodes_found else "—"
-                        
-                        # Базовые размеры
-                        dimensions_old = card.get("dimensions", {})
-                        old_dims_str = f"{dimensions_old.get('length', '—')}x{dimensions_old.get('width', '—')}x{dimensions_old.get('height', '—')}"
-                        
-                        # Собираем строку для вывода в таблицу предварительного контроля
-                        row_data = {
-                            "Артикул nmID (ЗАЩИЩЕН)": nm_id,
-                            "Артикул продавца (ЗАЩИЩЕН)": card.get("vendorCode", ""),
-                            "Название (ЗАЩИЩЕНО)": card.get("title", "—"),
-                            "Бренд (ЗАЩИЩЕНО)": card.get("brand", "—"),
-                            "Баркоды (ЗАЩИЩЕНО)": barcodes_str,
-                            "Вытащенный принт": print_name,
-                        }
-                        
-                        # Динамически выводим в предпросмотр только то, что пользователь выбрал галочками
-                        if ch_desc: row_data["Новое Описание"] = "Будет обновлено"
-                        if ch_dims: row_data["Размеры упаковки"] = f"{new_length}x{new_width}x{new_height}"
-                        if ch_weight: row_data["Вес упаковки (кг)"] = new_weight_val
-                        if ch_tnved: row_data["Код ТН ВЭД / ТНВЭД"] = tnved_val
-                        if ch_complect: row_data["Комплектация"] = complect_val[:40] + "..." if len(complect_val) > 40 else complect_val
-                        if ch_material: row_data["Материал изделия"] = material_val
-                        if ch_nazn: row_data["Назначение держателя"] = nazn_val
-                        if ch_gift: row_data["Назначение подарка"] = gift_val
-                        if ch_povod: row_data["Повод"] = povod_val
-                        if ch_item_dims: row_data["Размеры предмета"] = f"В:{item_height_val} x Ш:{item_width_val}"
-                        if ch_model: row_data["Модель"] = model_val
-                        if ch_fragile: row_data["Хрупкость"] = fragile_val
-                        
-                        preview_rows.append(row_data)
-                        
-                    st.session_state.df_preview = pd.DataFrame(preview_rows)
-                else:
-                    st.warning("⚠️ Не найдено карточек. Проверьте правильность токена контента или введённых nmID.")
         # Вывод таблицы предварительного контроля
         if st.session_state.df_preview is not None:
             st.subheader("👀 Таблица предварительного контроля данных")
@@ -219,28 +132,25 @@ if articules_input and wb_token:
                     match = re.search(r'["«](.*?)["»]', old_desc)
                     print_name = match.group(1).strip() if match else card.get("title", "").replace("Металлическая пластина для телефона", "").strip()
                     
-                    # 1. ОБНОВЛЕНИЕ ОПИСАНИЯ ПО ГАЛОЧКЕ
-                    final_description = card.get("description", "")
+                    # ИСПОЛЬЗУЕМ СУПЕР-ЗАЩИТУ: Модифицируем ТОЛЬКО ОРИГИНАЛЬНЫЙ СКАЧАННЫЙ МАССИВ WB
+                    # Если галочка снята, то поля "description" и "dimensions" летят в WB в исходном, родном виде!
                     if ch_desc:
-                        final_description = new_desc_template.format(print_name=print_name)
+                        card["description"] = new_desc_template.format(print_name=print_name)
                     
-                    # 2. ОБНОВЛЕНИЕ ГАБАРИТОВ ПО ГАЛОЧКЕ
-                    final_dimensions = card.get("dimensions", {"length": 18, "width": 14, "height": 1})
-                    if not ch_dims:
-                        # Если галочка выключена, принудительно забираем старые размеры из базы WB
-                        final_dimensions = card.get("dimensions", {"length": 18, "width": 14, "height": 1})
-                    else:
-                        final_dimensions = {
+                    if ch_dims:
+                        card["dimensions"] = {
                             "length": int(new_length),
                             "width": int(new_width),
                             "height": int(new_height)
                         }
                     
-                    # 3. ТОЧЕЧНАЯ МОДИФИКАЦИЯ ХАРАКТЕРИСТИК (МАССИВ CHARACTERISTICS)
-                    characteristics = card.get("characteristics", [])
+                    # ТОЧЕЧНАЯ МОДИФИКАЦИЯ ВНУТРЕННИХ ХАРАКТЕРИСТИК (МАССИВ CHARACTERISTICS)
+                    if "characteristics" not in card:
+                        card["characteristics"] = []
+                        
+                    characteristics = card["characteristics"]
                     existing_chars = {str(c.get("name")).lower(): c for c in characteristics}
                     
-                    # Функция для безопасной перезаписи или добавления поля
                     def set_char_value(char_name_str, char_value_list):
                         name_lower = char_name_str.lower()
                         if name_lower in existing_chars:
@@ -248,7 +158,7 @@ if articules_input and wb_token:
                         else:
                             characteristics.append({"name": char_name_str, "value": char_value_list})
                     
-                    # Перезаписываем строго то, что выбрано по галочкам. Всё остальное летит обратно в WB старым
+                    # Модифицируем характеристики строго по галочкам. Неотмеченные летят обратно нетронутыми!
                     if ch_weight: set_char_value("Вес с упаковкой (кг)", [str(new_weight_val)])
                     if ch_tnved:
                         set_char_value("Код ТН ВЭД", [str(tnved_val)])
@@ -264,19 +174,7 @@ if articules_input and wb_token:
                     if ch_model: set_char_value("Модель", [str(model_val)])
                     if ch_fragile: set_char_value("Хрупкость", [str(fragile_val)])
                     
-                    # Формируем финальную карточку (Название, Бренд и Ссылка на фото на 100% летят старыми и защищены)
-                    clean_card = {
-                        "nmID": nm_id,
-                        "vendorCode": card.get("vendorCode"),
-                        "description": final_description,
-                        "dimensions": final_dimensions,
-                        "characteristics": characteristics,
-                        "sizes": card.get("sizes", [])
-                    }
-                    if "mediaFiles" in card:
-                        clean_card["mediaFiles"] = card["mediaFiles"]
-                        
-                    update_payload_batch.append(clean_card)
+                    update_payload_batch.append(card)
                     
                     if len(update_payload_batch) == 100 or index == total_cards:
                         success, msg = send_update_batch(update_payload_batch, wb_token)
